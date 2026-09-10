@@ -121,7 +121,7 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-Live GitHub tests are opt-in only. They are never part of normal tests or pre-commit. See `docs/live-github-testing.md`.
+Live GitHub tests are opt-in only. They are never part of normal tests or pre-commit. Use `scripts\live-github.ps1 -Create` on Windows or `scripts/live-github.sh --create` on macOS and Linux. See `docs/live-github-testing.md`.
 
 ## Release and publishing
 
