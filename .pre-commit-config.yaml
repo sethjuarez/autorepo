@@ -26,3 +26,8 @@ repos:
         entry: cargo run --quiet -- prepare sethjuarez/autorepo-test-dry-run --pack builtin --dry-run
         language: system
         pass_filenames: false
+      - id: autorepo-warm-smoke
+        name: autorepo warm smoke
+        entry: cargo run --quiet -- warm sethjuarez/autorepo-test-dry-run --pack builtin --only facilitator_session,open_repo
+        language: system
+        pass_filenames: false

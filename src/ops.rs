@@ -74,8 +74,4 @@ pub enum Operation {
         marker: String,
         title: String,
     },
-    CopilotTask {
-        id: String,
-        title: String,
-    },
 }

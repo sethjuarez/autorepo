@@ -41,6 +41,5 @@ fn operation_summary(operation: &crate::ops::Operation) -> (&'static str, &str, 
         crate::ops::Operation::WarmupAutomationDraft { id, title, .. } => {
             ("warmup_automation_draft", id, title)
         }
-        crate::ops::Operation::CopilotTask { id, title } => ("copilot_task", id, title),
     }
 }

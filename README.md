@@ -83,6 +83,16 @@ packs/generic-starter/
 
 The manifest is strict. Unknown fields fail validation, paths must stay inside the pack, and resource IDs must be stable. Labels used by issues and pull requests have to be declared. References have to resolve. `safety.max_writes` caps the write plan.
 
+Warmup items are intentionally separate from deterministic writes. Supported warmup kinds are:
+
+| Kind | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `note` | `id`, `title`, `kind` | `body`, `start_agent_task` | Renders guidance only. |
+| `checklist` | `id`, `title`, `kind` | `body`, `start_agent_task` | Renders guidance only. |
+| `app_link` | `id`, `title`, `kind`, `target` | none | `target` is `home`, `my_work`, or `repo`. |
+| `app_session` | `id`, `title`, `kind`, `prompt` or `prompt_template` | `mode` | `mode` is `plan`, `interactive`, or `autopilot`; default is `plan`. |
+| `automation_draft` | `id`, `title`, `kind`, `trigger`, `prompt` or `prompt_template` | `time`, `day` | Opens a draft that still requires app confirmation. `trigger` is `manual`, `hourly`, `daily`, or `weekly`; daily/weekly require `time` as `HH:MM`, and weekly also requires `day`. |
+
 ## Safety model
 
 `autorepo` is built around a small safety contract.
@@ -108,7 +118,7 @@ Issues and pull requests should be matched by marker, not by title alone. If an 
 
 Copilot cloud-agent sessions are nondeterministic. They do not belong in the `prepare` plan.
 
-`autorepo warm` renders warmup notes, checklists, Copilot app links, Copilot app session links, and automation draft links from the pack. App session links use the public `ghapp://session/new` route with the target repo, mode, and kickoff prompt encoded in the URL. Automation draft links use `ghapp://automations/new` and still require user confirmation in the app. Passing `--open-app` requires `--only <ID>` so the CLI opens one intentional warmup target instead of a noisy set of app surfaces.
+`autorepo warm` renders warmup notes, checklists, Copilot app links, Copilot app session links, and automation draft links from the pack. App session links use the public `ghapp://session/new` route with the target repo, mode, and kickoff prompt encoded in the URL. Automation draft links use `ghapp://automations/new` and still require user confirmation in the app. Passing `--open-app` requires exactly one `--only <ID>` that points to an app link, app session, or automation draft, so the CLI opens one intentional warmup target instead of a noisy set of app surfaces.
 
 Cloud-agent tasks are still separate. They are async and nondeterministic, so they stay behind explicit opt-in flags and do not belong in the deterministic `prepare` plan.
 

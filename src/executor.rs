@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 use crate::{
     doctor,
@@ -102,9 +102,6 @@ impl Executor {
                 | Operation::WarmupAppLink { title, .. }
                 | Operation::WarmupAutomationDraft { title, .. } => {
                     println!("skip warmup item {title}: use autorepo warm");
-                }
-                Operation::CopilotTask { .. } => {
-                    bail!("copilot_task operations are allowed only in autorepo warm");
                 }
             }
         }

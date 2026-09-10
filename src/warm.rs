@@ -17,6 +17,7 @@ pub fn run(
     let repo = RepoRef::parse(repo)?;
     let warmup = selected_warmup(pack, only)?;
     ensure_open_app_is_bounded(open_app, only)?;
+    ensure_open_app_targets_app_items(open_app, &warmup)?;
     let mut open_errors = Vec::new();
 
     println!(
@@ -150,10 +151,36 @@ fn selected_warmup<'a>(
 
 fn ensure_open_app_is_bounded(open_app: bool, only: &[String]) -> Result<()> {
     if open_app && only.is_empty() {
-        bail!("--open-app requires --only <ID> so autorepo opens one intentional warmup target");
+        bail!(
+            "--open-app requires exactly one --only <ID> so autorepo opens one intentional warmup target"
+        );
+    }
+
+    if open_app && only.len() != 1 {
+        bail!("--open-app accepts exactly one --only <ID>");
     }
 
     Ok(())
+}
+
+fn ensure_open_app_targets_app_items(
+    open_app: bool,
+    warmup: &[&crate::pack::WarmupItem],
+) -> Result<()> {
+    if !open_app {
+        return Ok(());
+    }
+
+    if warmup.iter().any(|item| {
+        matches!(
+            item.kind,
+            WarmupKind::AppLink | WarmupKind::AppSession | WarmupKind::AutomationDraft
+        )
+    }) {
+        return Ok(());
+    }
+
+    bail!("selected warmup id has no Copilot app target to open")
 }
 
 fn warmup_prompt(pack: &Pack, item: &crate::pack::WarmupItem) -> Result<String> {
@@ -341,6 +368,13 @@ mod tests {
     #[test]
     fn open_app_requires_only() {
         assert!(ensure_open_app_is_bounded(true, &[]).is_err());
+        assert!(
+            ensure_open_app_is_bounded(
+                true,
+                &["facilitator_session".to_string(), "open_repo".to_string()]
+            )
+            .is_err()
+        );
         assert!(ensure_open_app_is_bounded(false, &[]).is_ok());
         assert!(ensure_open_app_is_bounded(true, &["facilitator_session".to_string()]).is_ok());
     }
