@@ -357,8 +357,9 @@ mod tests {
 
     #[test]
     fn validates_builtin_pack() {
-        let root =
-            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packs\\generic-starter");
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("packs")
+            .join("generic-starter");
         let pack = Pack::load(root).unwrap();
         pack.validate().unwrap();
     }
@@ -396,7 +397,7 @@ issues:
       - missing
 "#,
         );
-        write_template(&temp, "templates\\issues\\first.md");
+        write_template(&temp, &["templates", "issues", "first.md"]);
 
         let pack = Pack::load(temp.path().to_path_buf()).unwrap();
         assert!(pack.validate().is_err());
@@ -417,7 +418,7 @@ files:
     template: templates/README.md
 "#,
         );
-        write_template(&temp, "templates\\README.md");
+        write_template(&temp, &["templates", "README.md"]);
 
         let pack = Pack::load(temp.path().to_path_buf()).unwrap();
         assert!(pack.validate().is_err());
@@ -429,8 +430,10 @@ files:
         temp
     }
 
-    fn write_template(temp: &TempDir, path: &str) {
-        let full = temp.path().join(path);
+    fn write_template(temp: &TempDir, path: &[&str]) {
+        let full = path
+            .iter()
+            .fold(temp.path().to_path_buf(), |path, part| path.join(part));
         fs::create_dir_all(full.parent().unwrap()).unwrap();
         fs::write(full, "template").unwrap();
     }

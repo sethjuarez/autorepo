@@ -114,7 +114,9 @@ pub async fn run() -> Result<()> {
 
 fn resolve_pack(value: &str) -> Result<PathBuf> {
     if value == "builtin" || value == "generic-starter" {
-        return Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packs\\generic-starter"));
+        return Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("packs")
+            .join("generic-starter"));
     }
 
     PathBuf::from(value)
