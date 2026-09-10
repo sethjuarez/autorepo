@@ -1,0 +1,70 @@
+schema: 1
+id: generic-starter
+name: Generic starter
+description: Starter resources for mostly empty repositories used in demos and workshops.
+safety:
+  max_writes: 12
+labels:
+  - id: demo
+    name: demo
+    color: "5319e7"
+    description: Demo setup and walkthrough items.
+  - id: good_first_issue
+    name: good first issue
+    color: "7057ff"
+    description: Friendly starter work for participants.
+milestones:
+  - id: demo_ready
+    title: Demo ready
+    description: Initial repository state prepared for a workshop or agent workflow.
+files:
+  - id: readme
+    path: README.md
+    template: templates/README.md
+  - id: copilot_instructions
+    path: .github/copilot-instructions.md
+    template: templates/copilot-instructions.md
+  - id: ci
+    path: .github/workflows/ci.yml
+    template: templates/ci.yml
+  - id: docs_roadmap
+    path: docs/roadmap.md
+    template: templates/files/docs-roadmap.md
+branches:
+  - id: roadmap
+    name: demo/generic-starter/roadmap
+issues:
+  - id: improve_readme
+    title: Improve the README walkthrough
+    template: templates/issues/improve-readme.md
+    labels:
+      - demo
+      - good_first_issue
+    milestone: demo_ready
+  - id: add_smoke_test
+    title: Add a smoke test
+    template: templates/issues/add-smoke-test.md
+    labels:
+      - demo
+      - good_first_issue
+    milestone: demo_ready
+pull_requests:
+  - id: roadmap
+    title: Add demo roadmap
+    template: templates/prs/roadmap.md
+    branch: roadmap
+    labels:
+      - demo
+workflow_dispatches:
+  - id: ci
+    workflow: ci.yml
+warmup:
+  - id: facilitator_notes
+    title: Facilitator notes
+    kind: note
+    body: Review the created issues and PR before the demo starts.
+  - id: agent_checklist
+    title: Optional agent warmup checklist
+    kind: checklist
+    body: Confirm repository permissions, issue context, and expected demo flow before starting async agent tasks.
+    start_agent_task: true
