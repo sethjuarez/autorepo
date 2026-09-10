@@ -15,7 +15,7 @@ The write executor applies supported safe writes serially. Dry runs and validati
 - `autorepo prepare OWNER/REPO --pack <PACK_DIR|builtin> --dry-run` renders a deterministic plan.
 - `autorepo prepare OWNER/REPO --pack <PACK_DIR|builtin> --yes` validates the plan and applies supported safe writes.
 - `autorepo warm OWNER/REPO --pack <PACK_DIR|builtin>` renders Copilot app session links and warmup guidance.
-- `autorepo warm OWNER/REPO --pack <PACK_DIR|builtin> --open-app` opens generated Copilot app session links.
+- `autorepo warm OWNER/REPO --pack <PACK_DIR|builtin> --only <ID> --open-app` opens one intentional Copilot app warmup target.
 - `autorepo warm OWNER/REPO --pack <PACK_DIR|builtin> --only <ID>` limits warmup output and launch actions to specific pack warmup items.
 - `autorepo warm OWNER/REPO --pack <PACK_DIR|builtin> --start-agent-tasks` includes optional cloud-agent task guidance.
 
@@ -108,7 +108,7 @@ Issues and pull requests should be matched by marker, not by title alone. If an 
 
 Copilot cloud-agent sessions are nondeterministic. They do not belong in the `prepare` plan.
 
-`autorepo warm` renders warmup notes, checklists, Copilot app links, Copilot app session links, and automation draft links from the pack. App session links use the public `ghapp://session/new` route with the target repo, mode, and kickoff prompt encoded in the URL. Automation draft links use `ghapp://automations/new` and still require user confirmation in the app. Passing `--open-app` opens generated links through the GitHub-hosted launcher. Use `--only <ID>` when you want to open a single warmup target instead of the whole pack warmup set.
+`autorepo warm` renders warmup notes, checklists, Copilot app links, Copilot app session links, and automation draft links from the pack. App session links use the public `ghapp://session/new` route with the target repo, mode, and kickoff prompt encoded in the URL. Automation draft links use `ghapp://automations/new` and still require user confirmation in the app. Passing `--open-app` requires `--only <ID>` so the CLI opens one intentional warmup target instead of a noisy set of app surfaces.
 
 Cloud-agent tasks are still separate. They are async and nondeterministic, so they stay behind explicit opt-in flags and do not belong in the deterministic `prepare` plan.
 

@@ -16,6 +16,7 @@ pub fn run(
 ) -> Result<()> {
     let repo = RepoRef::parse(repo)?;
     let warmup = selected_warmup(pack, only)?;
+    ensure_open_app_is_bounded(open_app, only)?;
     let mut open_errors = Vec::new();
 
     println!(
@@ -147,6 +148,14 @@ fn selected_warmup<'a>(
         .collect())
 }
 
+fn ensure_open_app_is_bounded(open_app: bool, only: &[String]) -> Result<()> {
+    if open_app && only.is_empty() {
+        bail!("--open-app requires --only <ID> so autorepo opens one intentional warmup target");
+    }
+
+    Ok(())
+}
+
 fn warmup_prompt(pack: &Pack, item: &crate::pack::WarmupItem) -> Result<String> {
     let prompt = if let Some(template) = &item.prompt_template {
         pack.template_text(template)?
@@ -260,7 +269,8 @@ mod tests {
     use crate::{github::RepoRef, pack::WarmupAppTarget};
 
     use super::{
-        app_session_link, app_target_link, automation_draft_link, launcher_link, open_url_command,
+        app_session_link, app_target_link, automation_draft_link, ensure_open_app_is_bounded,
+        launcher_link, open_url_command,
     };
 
     #[test]
@@ -326,5 +336,12 @@ mod tests {
         } else {
             assert_eq!(args, vec![url]);
         }
+    }
+
+    #[test]
+    fn open_app_requires_only() {
+        assert!(ensure_open_app_is_bounded(true, &[]).is_err());
+        assert!(ensure_open_app_is_bounded(false, &[]).is_ok());
+        assert!(ensure_open_app_is_bounded(true, &["facilitator_session".to_string()]).is_ok());
     }
 }
