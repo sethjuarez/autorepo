@@ -38,7 +38,7 @@ Do not add live GitHub tests to pre-commit. Live tests are opt-in only. Use `scr
 
 ## Publishing
 
-Release-please manages release PRs and GitHub Releases. It depends on the repository setting that allows GitHub Actions to create and approve pull requests, plus `contents: write` and `pull-requests: write` workflow permissions.
+Release-please manages release PRs and GitHub Releases. It depends on the repository setting that allows GitHub Actions to create and approve pull requests, plus `contents: write` and `pull-requests: write` workflow permissions. To avoid approval-required CI runs on release PRs, set a `RELEASE_PLEASE_TOKEN` repository secret with Contents and Pull requests read/write access.
 
 Crates.io publishing normally runs inside `.github/workflows/release-please.yml` after release-please creates a GitHub Release. The manual `.github/workflows/publish.yml` workflow is a fallback for dry-runs or explicit manual publishing. Both real publishing paths use the `crates-io` GitHub Environment and the `CARGO_REGISTRY_TOKEN` repository secret. See `docs/publishing.md` for token-based publishing details and the OIDC trusted-publishing alternative.
 
