@@ -96,7 +96,9 @@ impl Executor {
                         "skip workflow_dispatch {workflow}: idempotent dispatch markers are not available yet"
                     );
                 }
-                Operation::WarmupNote { title, .. } | Operation::WarmupChecklist { title, .. } => {
+                Operation::WarmupNote { title, .. }
+                | Operation::WarmupChecklist { title, .. }
+                | Operation::WarmupAppSession { title, .. } => {
                     println!("skip warmup item {title}: use autorepo warm");
                 }
                 Operation::CopilotTask { .. } => {

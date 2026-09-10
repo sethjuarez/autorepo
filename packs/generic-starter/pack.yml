@@ -59,6 +59,11 @@ workflow_dispatches:
   - id: ci
     workflow: ci.yml
 warmup:
+  - id: facilitator_session
+    title: Facilitator app session
+    kind: app_session
+    mode: plan
+    prompt_template: templates/warmup/facilitator-session.md
   - id: facilitator_notes
     title: Facilitator notes
     kind: note

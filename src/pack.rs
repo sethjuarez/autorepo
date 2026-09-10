@@ -156,6 +156,19 @@ impl PackManifest {
             validate_resource_id("warmup", &warmup.id, &mut ids)?;
             validate_marker(&self.id, "warmup", &warmup.id)?;
             require_non_empty("warmup title", &warmup.title)?;
+            if let Some(template) = &warmup.prompt_template {
+                validate_safe_path("warmup prompt template", template)?;
+                require_template(root, template)?;
+            }
+            if matches!(warmup.kind, WarmupKind::AppSession)
+                && warmup.prompt.is_none()
+                && warmup.prompt_template.is_none()
+            {
+                bail!(
+                    "warmup app_session '{}' requires prompt or prompt_template",
+                    warmup.id
+                );
+            }
         }
 
         if write_count > self.safety.max_writes {
@@ -256,6 +269,9 @@ pub struct WarmupItem {
     pub title: String,
     pub kind: WarmupKind,
     pub body: Option<String>,
+    pub prompt: Option<String>,
+    pub prompt_template: Option<String>,
+    pub mode: Option<WarmupMode>,
     #[serde(default)]
     pub start_agent_task: bool,
 }
@@ -265,6 +281,25 @@ pub struct WarmupItem {
 pub enum WarmupKind {
     Note,
     Checklist,
+    AppSession,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WarmupMode {
+    Interactive,
+    Plan,
+    Autopilot,
+}
+
+impl WarmupMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Interactive => "interactive",
+            Self::Plan => "plan",
+            Self::Autopilot => "autopilot",
+        }
+    }
 }
 
 fn validate_resource_id(kind: &str, id: &str, seen: &mut HashSet<String>) -> Result<()> {
@@ -425,6 +460,26 @@ files:
 "#,
         );
         write_template(&temp, &["templates", "README.md"]);
+
+        let pack = Pack::load(temp.path().to_path_buf()).unwrap();
+        assert!(pack.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_app_session_without_prompt() {
+        let temp = pack_dir(
+            r#"
+schema: 1
+id: bad_pack
+name: Bad pack
+safety:
+  max_writes: 1
+warmup:
+  - id: app
+    title: App warmup
+    kind: app_session
+"#,
+        );
 
         let pack = Pack::load(temp.path().to_path_buf()).unwrap();
         assert!(pack.validate().is_err());

@@ -59,6 +59,11 @@ pub enum Operation {
         marker: String,
         title: String,
     },
+    WarmupAppSession {
+        id: String,
+        marker: String,
+        title: String,
+    },
     CopilotTask {
         id: String,
         title: String,

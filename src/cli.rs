@@ -34,7 +34,7 @@ enum Command {
     },
     /// Plan or apply deterministic repository preparation operations.
     Prepare(PrepareArgs),
-    /// Render optional warmup notes/checklists and agent-task guidance.
+    /// Render optional app session links, notes/checklists, and agent-task guidance.
     Warm(WarmArgs),
 }
 
@@ -66,6 +66,9 @@ pub struct WarmArgs {
     /// Include explicit Copilot cloud-agent task startup guidance.
     #[arg(long)]
     start_agent_tasks: bool,
+    /// Open generated Copilot app session links.
+    #[arg(long)]
+    open_app: bool,
 }
 
 pub async fn run() -> Result<()> {
@@ -105,7 +108,7 @@ pub async fn run() -> Result<()> {
         Command::Warm(args) => {
             let pack = Pack::load(resolve_pack(&args.pack)?)?;
             pack.validate()?;
-            warm::run(&args.repo, &pack, args.start_agent_tasks)?;
+            warm::run(&args.repo, &pack, args.start_agent_tasks, args.open_app)?;
         }
     }
 
