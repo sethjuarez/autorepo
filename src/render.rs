@@ -25,15 +25,15 @@ fn operation_summary(operation: &crate::ops::Operation) -> (&'static str, &str, 
     match operation {
         crate::ops::Operation::Label { id, name, .. } => ("label", id, name),
         crate::ops::Operation::Milestone { id, title, .. } => ("milestone", id, title),
-        crate::ops::Operation::File { id, path } => ("file", id, path),
-        crate::ops::Operation::Branch { id, name } => ("branch", id, name),
-        crate::ops::Operation::Issue { id, title } => ("issue", id, title),
-        crate::ops::Operation::PullRequest { id, title } => ("pull_request", id, title),
+        crate::ops::Operation::File { id, path, .. } => ("file", id, path),
+        crate::ops::Operation::Branch { id, name, .. } => ("branch", id, name),
+        crate::ops::Operation::Issue { id, title, .. } => ("issue", id, title),
+        crate::ops::Operation::PullRequest { id, title, .. } => ("pull_request", id, title),
         crate::ops::Operation::WorkflowDispatch { id, workflow, .. } => {
             ("workflow_dispatch", id, workflow)
         }
-        crate::ops::Operation::WarmupNote { id, title } => ("warmup_note", id, title),
-        crate::ops::Operation::WarmupChecklist { id, title } => ("warmup_checklist", id, title),
+        crate::ops::Operation::WarmupNote { id, title, .. } => ("warmup_note", id, title),
+        crate::ops::Operation::WarmupChecklist { id, title, .. } => ("warmup_checklist", id, title),
         crate::ops::Operation::CopilotTask { id, title } => ("copilot_task", id, title),
     }
 }

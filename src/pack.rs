@@ -33,6 +33,12 @@ impl Pack {
     pub fn validate(&self) -> Result<()> {
         self.manifest.validate(&self.root)
     }
+
+    pub fn template_text(&self, path: &str) -> Result<String> {
+        let template_path = self.root.join(path);
+        fs::read_to_string(&template_path)
+            .with_context(|| format!("failed to read template {}", template_path.display()))
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
