@@ -13,9 +13,7 @@ The normal release path is handled by `.github/workflows/release-please.yml`.
 - Real publishing reads `${{ secrets.CARGO_REGISTRY_TOKEN }}` and passes it to `cargo publish` through the `CARGO_REGISTRY_TOKEN` environment variable.
 - The workflow never prints or requests the secret value.
 
-Release-please requires the repository setting that allows GitHub Actions to create and approve pull requests, plus workflow permissions `contents: write` and `pull-requests: write`.
-
-To avoid approval-required CI runs on release PRs, configure a separate automation token as `RELEASE_PLEASE_TOKEN`. If that secret is not present, the workflow falls back to `github.token`, which still works but can require a manual rerun for CI on release-please PRs.
+Release-please requires the repository setting that allows GitHub Actions to create and approve pull requests, plus workflow permissions `contents: write` and `pull-requests: write`. Release PRs only change crate metadata and changelog files, so CI ignores those PRs. The push to `main` after a release PR merge still runs CI.
 
 ## Manual publishing workflow
 
@@ -34,8 +32,6 @@ Configure a crates.io API token as this GitHub Actions repository secret:
 | GitHub secret name | `CARGO_REGISTRY_TOKEN` |
 | GitHub repository owner/account | `sethjuarez` |
 | GitHub repository name | `autorepo` |
-| Release-please secret name | `RELEASE_PLEASE_TOKEN` |
-| Release-please token scope | Contents: read/write; Pull requests: read/write |
 | Release workflow filename | `release-please.yml` |
 | Manual fallback workflow filename | `publish.yml` |
 | Environment name | `crates-io` |
