@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and release-please.
 
+## [0.5.1](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.5.0...autorepo-v0.5.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* skip ci for release metadata prs ([c7a0f41](https://github.com/sethjuarez/autorepo/commit/c7a0f41b72a3009694c7cfda51eea1f56ac647f5))
+* use release token for release-please prs ([4a26712](https://github.com/sethjuarez/autorepo/commit/4a26712d5381ce59eb04d898f8b350a9a9e490ed))
+
 ## [0.5.0](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.4.0...autorepo-v0.5.0) (2026-09-10)
 
 
