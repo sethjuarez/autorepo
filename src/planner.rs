@@ -215,6 +215,22 @@ impl Planner {
                             )?,
                             title: warmup.title.clone(),
                         },
+                        WarmupKind::AppLink => Operation::WarmupAppLink {
+                            id: warmup.id.clone(),
+                            marker: markers::format_marker_token(
+                                &manifest.id,
+                                &format!("warmup.{}", warmup.id),
+                            )?,
+                            title: warmup.title.clone(),
+                        },
+                        WarmupKind::AutomationDraft => Operation::WarmupAutomationDraft {
+                            id: warmup.id.clone(),
+                            marker: markers::format_marker_token(
+                                &manifest.id,
+                                &format!("warmup.{}", warmup.id),
+                            )?,
+                            title: warmup.title.clone(),
+                        },
                     })
                 })
                 .collect::<Result<Vec<_>>>()?,

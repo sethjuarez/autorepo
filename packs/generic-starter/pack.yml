@@ -59,11 +59,25 @@ workflow_dispatches:
   - id: ci
     workflow: ci.yml
 warmup:
+  - id: open_repo
+    title: Open repository in Copilot app
+    kind: app_link
+    target: repo
+  - id: open_my_work
+    title: Open My Work in Copilot app
+    kind: app_link
+    target: my_work
   - id: facilitator_session
     title: Facilitator app session
     kind: app_session
     mode: plan
     prompt_template: templates/warmup/facilitator-session.md
+  - id: daily_demo_triage
+    title: Daily demo triage automation
+    kind: automation_draft
+    trigger: daily
+    time: "09:00"
+    prompt_template: templates/warmup/daily-demo-triage.md
   - id: facilitator_notes
     title: Facilitator notes
     kind: note

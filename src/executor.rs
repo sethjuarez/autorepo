@@ -98,7 +98,9 @@ impl Executor {
                 }
                 Operation::WarmupNote { title, .. }
                 | Operation::WarmupChecklist { title, .. }
-                | Operation::WarmupAppSession { title, .. } => {
+                | Operation::WarmupAppSession { title, .. }
+                | Operation::WarmupAppLink { title, .. }
+                | Operation::WarmupAutomationDraft { title, .. } => {
                     println!("skip warmup item {title}: use autorepo warm");
                 }
                 Operation::CopilotTask { .. } => {

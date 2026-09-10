@@ -37,6 +37,10 @@ fn operation_summary(operation: &crate::ops::Operation) -> (&'static str, &str, 
         crate::ops::Operation::WarmupAppSession { id, title, .. } => {
             ("warmup_app_session", id, title)
         }
+        crate::ops::Operation::WarmupAppLink { id, title, .. } => ("warmup_app_link", id, title),
+        crate::ops::Operation::WarmupAutomationDraft { id, title, .. } => {
+            ("warmup_automation_draft", id, title)
+        }
         crate::ops::Operation::CopilotTask { id, title } => ("copilot_task", id, title),
     }
 }

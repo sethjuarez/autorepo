@@ -69,6 +69,9 @@ pub struct WarmArgs {
     /// Open generated Copilot app session links.
     #[arg(long)]
     open_app: bool,
+    /// Limit warmup output/actions to one or more warmup ids.
+    #[arg(long, value_delimiter = ',')]
+    r#only: Vec<String>,
 }
 
 pub async fn run() -> Result<()> {
@@ -108,7 +111,13 @@ pub async fn run() -> Result<()> {
         Command::Warm(args) => {
             let pack = Pack::load(resolve_pack(&args.pack)?)?;
             pack.validate()?;
-            warm::run(&args.repo, &pack, args.start_agent_tasks, args.open_app)?;
+            warm::run(
+                &args.repo,
+                &pack,
+                args.start_agent_tasks,
+                args.open_app,
+                &args.r#only,
+            )?;
         }
     }
 
