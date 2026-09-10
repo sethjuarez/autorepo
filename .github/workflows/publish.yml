@@ -1,17 +1,6 @@
 name: Publish
 
 on:
-  pull_request:
-    paths:
-      - Cargo.lock
-      - Cargo.toml
-      - README.md
-      - src/**
-      - packs/**
-      - .github/workflows/publish.yml
-  release:
-    types:
-      - published
   workflow_dispatch:
     inputs:
       publish:
@@ -24,20 +13,29 @@ permissions:
   contents: read
 
 jobs:
-  publish:
-    name: Cargo publish
+  dry-run:
+    name: Cargo publish dry-run
     runs-on: ubuntu-latest
-    environment: crates-io
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Cargo publish dry-run
-        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.publish == false)
+        if: inputs.publish == false
         run: cargo publish --dry-run
+
+  publish:
+    name: Cargo publish
+    runs-on: ubuntu-latest
+    if: inputs.publish == true
+    environment: crates-io
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
       - name: Publish to crates.io
-        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish == true)
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |

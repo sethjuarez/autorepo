@@ -67,7 +67,7 @@ pre-commit run --all-files
 
 Live GitHub tests are never part of normal tests or pre-commit. See `docs/live-github-testing.md` for the opt-in fake-repo guard and future live test contract.
 
-Crates.io publishing is prepared through the `CARGO_REGISTRY_TOKEN` GitHub secret, with trusted publishing/OIDC documented as an alternative. See `docs/publishing.md` for the exact configuration values.
+Crates.io publishing is prepared through release-please and the `CARGO_REGISTRY_TOKEN` GitHub secret, with trusted publishing/OIDC documented as an alternative. See `docs/publishing.md` for the exact configuration values.
 
 ## License
 
