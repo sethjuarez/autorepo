@@ -1,0 +1,25 @@
+name: Live fake-repo tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: sethjuarez/fake-repo-* or sethjuarez/autorepo-test-* repository to target.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: Validate live-test guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run opt-in live guard tests
+        env:
+          AUTOREPO_LIVE_GITHUB: "1"
+          AUTOREPO_LIVE_REPO: ${{ inputs.repo }}
+        run: cargo test --test live_github -- --ignored

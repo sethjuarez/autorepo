@@ -1,0 +1,28 @@
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --check
+        language: system
+        pass_filenames: false
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy -- -D warnings
+        language: system
+        pass_filenames: false
+      - id: cargo-test
+        name: cargo test
+        entry: cargo test
+        language: system
+        pass_filenames: false
+      - id: autorepo-validate-builtin
+        name: autorepo validate builtin
+        entry: cargo run --quiet -- validate builtin
+        language: system
+        pass_filenames: false
+      - id: autorepo-deterministic-dry-run
+        name: autorepo deterministic dry-run
+        entry: cargo run --quiet -- prepare sethjuarez/autorepo-test-dry-run --pack builtin --dry-run
+        language: system
+        pass_filenames: false
