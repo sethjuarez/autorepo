@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and release-please.
 
+## [0.3.0](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.2.0...autorepo-v0.3.0) (2026-09-10)
+
+
+### Features
+
+* improve crate readme ([1b4bed1](https://github.com/sethjuarez/autorepo/commit/1b4bed16e17dae513f6b2dceee3103e3da281ec0))
+
 ## [0.2.0](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.1.0...autorepo-v0.2.0) (2026-09-10)
 
 

@@ -1,6 +1,6 @@
 [package]
 name = "autorepo"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "Prepare GitHub repositories for demos, workshops, and agent workflows from explicit packs."
 license = "MIT"
