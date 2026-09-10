@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and release-please.
 
+## [0.4.0](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.3.0...autorepo-v0.4.0) (2026-09-10)
+
+
+### Features
+
+* hydrate generic starter pack ([2037706](https://github.com/sethjuarez/autorepo/commit/20377062c2336bc287c27b9e39fa0c497ac18642))
+
 ## [0.3.0](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.2.0...autorepo-v0.3.0) (2026-09-10)
 
 
