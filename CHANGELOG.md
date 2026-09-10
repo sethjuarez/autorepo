@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and release-please.
 
+## [0.5.0](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.4.0...autorepo-v0.5.0) (2026-09-10)
+
+
+### Features
+
+* add live github test runners ([58a113b](https://github.com/sethjuarez/autorepo/commit/58a113b1c2d86dd6ee6e402e3bd2b216fa08940d))
+
 ## [0.4.0](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.3.0...autorepo-v0.4.0) (2026-09-10)
 
 
