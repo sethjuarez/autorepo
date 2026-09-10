@@ -1,6 +1,6 @@
 # Live GitHub fake-repo testing
 
-Normal `cargo test`, pre-commit hooks, and pull-request quality gates must never touch GitHub. Live GitHub testing is opt-in only and is reserved for proving real repository behavior after write execution exists.
+Normal `cargo test`, pre-commit hooks, and pull-request quality gates must never touch GitHub. Live GitHub testing is opt-in only.
 
 ## Allowed targets
 
@@ -9,29 +9,30 @@ Live tests may target only repositories owned by `sethjuarez` whose names match 
 - `fake-repo-*`
 - `autorepo-test-*`
 
-The initial guard test enforces this naming rule through `AUTOREPO_LIVE_REPO`.
+The live test enforces this naming rule before it creates or touches a repository.
 
 ## Running the guard locally
 
+To create a generated test repository, run the ignored test with explicit opt-in:
+
 ```powershell
 $env:AUTOREPO_LIVE_GITHUB = "1"
-$env:AUTOREPO_LIVE_REPO = "sethjuarez/autorepo-test-example"
+$env:AUTOREPO_LIVE_CREATE = "1"
 cargo test --test live_github -- --ignored
 ```
 
-The current live test is a guard/stub only. It validates opt-in environment variables and the target repository name, then exits without making GitHub API calls.
+The test creates a public repository named `sethjuarez/autorepo-test-*`, runs the built-in `generic-starter` pack, reruns it with `--allow-non-empty`, verifies no duplicate labels, milestones, issues, or pull requests were created, and tries to delete the generated repository only after every assertion passes.
 
-## Future live test contract
+To target an existing fake repository instead:
 
-When real GitHub write behavior lands, live tests should verify:
+```powershell
+$env:AUTOREPO_LIVE_GITHUB = "1"
+$env:AUTOREPO_LIVE_REPO = "sethjuarez/fake-repo-example"
+cargo test --test live_github -- --ignored
+```
 
-1. `prepare --dry-run` renders the expected deterministic plan.
-2. `prepare --yes` creates only marked resources.
-3. Re-running `prepare --yes` creates no duplicates.
-4. Cleanup deletes only generated `sethjuarez/autorepo-test-*` repositories created by the test run.
-
-Failures should leave repositories intact for inspection. Live tests must never clean up user-managed `fake-repo-*` repositories automatically.
+Failures leave repositories intact for inspection. If cleanup fails because the local GitHub token does not have `delete_repo`, delete the generated repo manually or run `gh auth refresh -h github.com -s delete_repo` before the next generated cleanup. Live tests never clean up user-managed `fake-repo-*` repositories automatically.
 
 ## GitHub Actions
 
-The `Live fake-repo tests` workflow is manual-only. It requires a repository input and runs only the ignored guard test today. It does not perform live GitHub writes in V1.
+The `Live fake-repo tests` workflow is manual-only. It requires a repository input and runs the ignored live test against that repository.

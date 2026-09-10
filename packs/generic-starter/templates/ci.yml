@@ -15,4 +15,4 @@ jobs:
       - name: Smoke
         run: echo "Repository is ready for a demo."
 
-# autorepo marker: file.ci
+# autorepo:pack=generic-starter;id=file.ci
