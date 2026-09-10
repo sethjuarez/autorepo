@@ -103,12 +103,10 @@ fn live_github_prepare_generic_starter_is_idempotent() {
         .contains("branch.roadmap")
     );
 
-    if generated {
-        if let Err(error) = try_run("gh", &["repo", "delete", &repo, "--yes"]) {
-            eprintln!(
-                "live test succeeded, but cleanup failed for {repo}. Delete it manually or run `gh auth refresh -h github.com -s delete_repo` before the next generated cleanup.\n{error}"
-            );
-        }
+    if generated && let Err(error) = try_run("gh", &["repo", "delete", &repo, "--yes"]) {
+        eprintln!(
+            "live test succeeded, but cleanup failed for {repo}. Delete it manually or run `gh auth refresh -h github.com -s delete_repo` before the next generated cleanup.\n{error}"
+        );
     }
 }
 

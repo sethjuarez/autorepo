@@ -32,3 +32,5 @@ jobs:
         run: cargo run --quiet -- validate builtin
       - name: deterministic dry-run
         run: cargo run --quiet -- prepare sethjuarez/autorepo-test-dry-run --pack builtin --dry-run
+      - name: warm smoke
+        run: cargo run --quiet -- warm sethjuarez/autorepo-test-dry-run --pack builtin --only facilitator_session,open_repo
