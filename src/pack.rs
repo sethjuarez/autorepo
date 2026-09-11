@@ -17,7 +17,7 @@ pub struct Pack {
 
 impl Pack {
     pub fn load(root: PathBuf) -> Result<Self> {
-        let manifest_path = root.join("pack.yml");
+        let manifest_path = manifest_path(&root)?;
         let manifest_text = fs::read_to_string(&manifest_path)
             .with_context(|| format!("failed to read {}", manifest_path.display()))?;
         let manifest: PackManifest = serde_yaml::from_str(&manifest_text)
@@ -39,6 +39,23 @@ impl Pack {
         fs::read_to_string(&template_path)
             .with_context(|| format!("failed to read template {}", template_path.display()))
     }
+}
+
+fn manifest_path(root: &Path) -> Result<PathBuf> {
+    let pack_yml = root.join("pack.yml");
+    if pack_yml.is_file() {
+        return Ok(pack_yml);
+    }
+
+    let pack_yaml = root.join("pack.yaml");
+    if pack_yaml.is_file() {
+        return Ok(pack_yaml);
+    }
+
+    bail!(
+        "pack manifest not found in {}; expected pack.yml or pack.yaml",
+        root.display()
+    );
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -625,6 +642,27 @@ safety:
         );
 
         assert!(Pack::load(temp.path().to_path_buf()).is_err());
+    }
+
+    #[test]
+    fn accepts_pack_yaml_manifest() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("pack.yaml"),
+            r#"
+schema: 1
+id: yaml_pack
+name: YAML pack
+safety:
+  max_writes: 1
+"#
+            .trim_start(),
+        )
+        .unwrap();
+
+        let pack = Pack::load(temp.path().to_path_buf()).unwrap();
+        pack.validate().unwrap();
+        assert_eq!(pack.manifest().id, "yaml_pack");
     }
 
     #[test]
