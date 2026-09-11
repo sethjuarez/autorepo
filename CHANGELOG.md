@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and release-please.
 
+## [0.7.0](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.6.0...autorepo-v0.7.0) (2026-09-11)
+
+
+### Features
+
+* load packs from GitHub sources ([#15](https://github.com/sethjuarez/autorepo/issues/15)) ([159fbbc](https://github.com/sethjuarez/autorepo/commit/159fbbc7d010a113db77b1aa19a819db603cfe42))
+
 ## [0.6.0](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.5.1...autorepo-v0.6.0) (2026-09-10)
 
 
