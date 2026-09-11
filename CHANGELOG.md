@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and release-please.
 
+## [0.6.0](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.5.1...autorepo-v0.6.0) (2026-09-10)
+
+
+### Features
+
+* add Copilot app warmup targets ([#13](https://github.com/sethjuarez/autorepo/issues/13)) ([3e0c538](https://github.com/sethjuarez/autorepo/commit/3e0c53820ef513f95e8e61031eee8f3f59414927))
+
 ## [0.5.1](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.5.0...autorepo-v0.5.1) (2026-09-10)
 
 
