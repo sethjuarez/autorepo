@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and release-please.
 
+## [0.8.0](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.7.0...autorepo-v0.8.0) (2026-09-11)
+
+
+### Features
+
+* add experimental session snapshots ([#17](https://github.com/sethjuarez/autorepo/issues/17)) ([b96e591](https://github.com/sethjuarez/autorepo/commit/b96e591f1b2ee518d9d30038b0f25057ef13ef1c))
+
 ## [0.7.0](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.6.0...autorepo-v0.7.0) (2026-09-11)
 
 
