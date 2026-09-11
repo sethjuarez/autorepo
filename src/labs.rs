@@ -160,8 +160,10 @@ pub fn rehydrate_session(args: RehydrateSessionArgs) -> Result<()> {
     let repo = RepoRef::parse(&args.repo)?;
     let snapshot = read_snapshot(&args.snapshot)?;
     validate_snapshot(&snapshot)?;
-    let project_id = find_project_id(&home, &repo)?;
-    let plan = RehydratePlan::new(snapshot, repo, project_id, args.workspace, args.branch)?;
+    let workspace = absolute_existing_path(&args.workspace)?;
+    validate_workspace_repo(&workspace, &repo)?;
+    let project_id = find_project_id(&home, &repo, &workspace)?;
+    let plan = RehydratePlan::new(snapshot, repo, project_id, workspace, args.branch)?;
     plan.preflight(&home)?;
 
     if args.dry_run {
@@ -380,7 +382,6 @@ impl RehydratePlan {
         workspace_path: PathBuf,
         branch: Option<String>,
     ) -> Result<Self> {
-        let workspace_path = absolute_existing_path(&workspace_path)?;
         let branch = match branch {
             Some(branch) => branch,
             None => current_checkout_branch(&workspace_path)?,
@@ -903,7 +904,7 @@ impl CheckoutKind {
     }
 }
 
-fn find_project_id(home: &Path, repo: &RepoRef) -> Result<String> {
+fn find_project_id(home: &Path, repo: &RepoRef, workspace: &Path) -> Result<String> {
     let data_db = home.join("data.db");
     if !data_db.is_file() {
         bail!(
@@ -912,19 +913,108 @@ fn find_project_id(home: &Path, repo: &RepoRef) -> Result<String> {
         );
     }
     let conn = open_readonly(&data_db)?;
-    let project_id = conn
-        .query_row(
-            "select id from projects where github_owner = ?1 and github_repo = ?2 order by last_opened_at desc limit 1",
-            params![repo.owner, repo.name],
-            |row| row.get(0),
-        )
-        .optional()?;
-    project_id.with_context(|| {
-        format!(
+    let mut stmt = conn.prepare(
+        "select id, main_repo_path from projects where github_owner = ?1 and github_repo = ?2 order by last_opened_at desc",
+    )?;
+    let candidates = stmt
+        .query_map(params![repo.owner, repo.name], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if candidates.is_empty() {
+        bail!(
             "target Copilot home has no configured project for {}/{}; create/open the project once, then retry",
-            repo.owner, repo.name
-        )
-    })
+            repo.owner,
+            repo.name
+        );
+    }
+
+    let mut exact_matches = Vec::new();
+    for (id, main_repo_path) in &candidates {
+        if same_existing_path(workspace, Path::new(main_repo_path))? {
+            exact_matches.push(id.clone());
+        }
+    }
+    if exact_matches.len() == 1 {
+        return Ok(exact_matches.remove(0));
+    }
+    if exact_matches.len() > 1 {
+        bail!(
+            "target Copilot home has multiple configured projects for workspace '{}'",
+            workspace.display()
+        );
+    }
+    if candidates.len() == 1 {
+        return Ok(candidates[0].0.clone());
+    }
+
+    bail!(
+        "target Copilot home has multiple configured projects for {}/{}; pass a workspace that matches one configured project path",
+        repo.owner,
+        repo.name
+    )
+}
+
+fn validate_workspace_repo(workspace: &Path, repo: &RepoRef) -> Result<()> {
+    let output = std::process::Command::new("git")
+        .args(["-C"])
+        .arg(workspace)
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .with_context(|| {
+            format!(
+                "failed to read origin remote for workspace '{}'",
+                workspace.display()
+            )
+        })?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!(
+            "failed to read origin remote for workspace '{}': {stderr}",
+            workspace.display()
+        );
+    }
+    let remote = String::from_utf8_lossy(&output.stdout);
+    let Some(remote_repo) = parse_github_remote(remote.trim()) else {
+        bail!(
+            "workspace '{}' origin remote is not a GitHub OWNER/REPO URL",
+            workspace.display()
+        );
+    };
+    if remote_repo != format!("{}/{}", repo.owner, repo.name) {
+        bail!(
+            "workspace '{}' origin remote points to {}, not {}/{}",
+            workspace.display(),
+            remote_repo,
+            repo.owner,
+            repo.name
+        );
+    }
+    Ok(())
+}
+
+fn parse_github_remote(remote: &str) -> Option<String> {
+    let trimmed = remote.trim_end_matches(".git");
+    if let Some(path) = trimmed.strip_prefix("https://github.com/") {
+        return owner_repo_from_path(path);
+    }
+    if let Some(path) = trimmed.strip_prefix("git@github.com:") {
+        return owner_repo_from_path(path);
+    }
+    if let Some(path) = trimmed.strip_prefix("ssh://git@github.com/") {
+        return owner_repo_from_path(path);
+    }
+    None
+}
+
+fn owner_repo_from_path(path: &str) -> Option<String> {
+    let mut parts = path.split('/');
+    let owner = parts.next()?;
+    let name = parts.next()?;
+    if owner.is_empty() || name.is_empty() || parts.next().is_some() {
+        return None;
+    }
+    Some(format!("{owner}/{name}"))
 }
 
 fn require_db_schema(db: &Path, tables: &[(&str, &[&str])]) -> Result<()> {
@@ -1169,7 +1259,23 @@ mod tests {
         })
         .unwrap();
         let workspace = home.path().join("workspace");
-        fs::create_dir_all(workspace.join(".git")).unwrap();
+        fs::create_dir_all(&workspace).unwrap();
+        std::process::Command::new("git")
+            .args(["init", "--quiet"])
+            .arg(&workspace)
+            .status()
+            .unwrap();
+        std::process::Command::new("git")
+            .args([
+                "-C",
+                workspace.to_str().unwrap(),
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/sethjuarez/autorepo-test-fixture.git",
+            ])
+            .status()
+            .unwrap();
 
         rehydrate_session(RehydrateSessionArgs {
             copilot_home: Some(home.path().to_path_buf()),
