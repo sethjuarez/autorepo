@@ -11,13 +11,13 @@ V1 is intentionally small. It starts with packs because a demo should be repeata
 The write executor applies supported safe writes serially. Dry runs and validation show the exact shape before anything changes.
 
 - `autorepo doctor OWNER/REPO` checks target syntax and local auth hints.
-- `autorepo validate <PACK_DIR>` loads and validates a strict `pack.yml`.
-- `autorepo prepare OWNER/REPO --pack <PACK_DIR|builtin> --dry-run` renders a deterministic plan.
-- `autorepo prepare OWNER/REPO --pack <PACK_DIR|builtin> --yes` validates the plan and applies supported safe writes.
-- `autorepo warm OWNER/REPO --pack <PACK_DIR|builtin>` renders Copilot app session links and warmup guidance.
-- `autorepo warm OWNER/REPO --pack <PACK_DIR|builtin> --only <ID> --open-app` opens one intentional Copilot app warmup target.
-- `autorepo warm OWNER/REPO --pack <PACK_DIR|builtin> --only <ID>` limits warmup output and launch actions to specific pack warmup items.
-- `autorepo warm OWNER/REPO --pack <PACK_DIR|builtin> --start-agent-tasks` includes optional cloud-agent task guidance.
+- `autorepo validate <PACK_SOURCE>` loads and validates a strict `pack.yml` or `pack.yaml`.
+- `autorepo prepare OWNER/REPO --pack <PACK_SOURCE> --dry-run` renders a deterministic plan.
+- `autorepo prepare OWNER/REPO --pack <PACK_SOURCE> --yes` validates the plan and applies supported safe writes.
+- `autorepo warm OWNER/REPO --pack <PACK_SOURCE>` renders Copilot app session links and warmup guidance.
+- `autorepo warm OWNER/REPO --pack <PACK_SOURCE> --only <ID> --open-app` opens one intentional Copilot app warmup target.
+- `autorepo warm OWNER/REPO --pack <PACK_SOURCE> --only <ID>` limits warmup output and launch actions to specific pack warmup items.
+- `autorepo warm OWNER/REPO --pack <PACK_SOURCE> --start-agent-tasks` includes optional cloud-agent task guidance.
 
 The included `generic-starter` pack is useful for smoke testing the CLI and for shaping mostly empty demo repositories.
 
@@ -43,6 +43,18 @@ Validate the built-in pack:
 autorepo validate builtin
 ```
 
+Validate a pack from a local folder:
+
+```powershell
+autorepo validate .\packs\generic-starter
+```
+
+Validate a pack from a GitHub repository folder:
+
+```powershell
+autorepo validate "github:sethjuarez/autorepo//packs/generic-starter?ref=main"
+```
+
 Render a dry-run plan:
 
 ```powershell
@@ -63,7 +75,7 @@ autorepo warm sethjuarez/autorepo-test-dry-run --pack builtin --only facilitator
 
 ## Pack model
 
-A pack is a folder with a `pack.yml` manifest and templates.
+A pack is a folder with a `pack.yml` or `pack.yaml` manifest and templates.
 
 ```text
 packs/generic-starter/
@@ -80,6 +92,18 @@ packs/generic-starter/
     files/
       docs-roadmap.md
 ```
+
+Pack sources can be:
+
+| Source | Example |
+| --- | --- |
+| Built-in pack | `builtin` or `generic-starter` |
+| Local folder | `.\packs\generic-starter` |
+| GitHub repository root | `github:OWNER/REPO?ref=main` |
+| GitHub repository folder | `github:OWNER/REPO//path/to/pack?ref=main` |
+| GitHub tree URL | `https://github.com/OWNER/REPO/tree/main/path/to/pack` |
+
+The `?ref=` value is optional for `github:` sources. If omitted, `autorepo` uses the repository default branch. Remote pack sources are cloned into a temporary folder for the command and then removed.
 
 The manifest is strict. Unknown fields fail validation, paths must stay inside the pack, and resource IDs must be stable. Labels used by issues and pull requests have to be declared. References have to resolve. `safety.max_writes` caps the write plan.
 
