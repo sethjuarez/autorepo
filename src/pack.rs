@@ -17,6 +17,9 @@ pub struct Pack {
 
 impl Pack {
     pub fn load(root: PathBuf) -> Result<Self> {
+        let root = root
+            .canonicalize()
+            .with_context(|| format!("pack path '{}' does not exist", root.display()))?;
         let manifest_path = manifest_path(&root)?;
         let manifest_text = fs::read_to_string(&manifest_path)
             .with_context(|| format!("failed to read {}", manifest_path.display()))?;
@@ -35,20 +38,18 @@ impl Pack {
     }
 
     pub fn template_text(&self, path: &str) -> Result<String> {
-        let template_path = self.root.join(path);
+        let template_path = canonical_pack_file(&self.root, path, "template")?;
         fs::read_to_string(&template_path)
             .with_context(|| format!("failed to read template {}", template_path.display()))
     }
 }
 
 fn manifest_path(root: &Path) -> Result<PathBuf> {
-    let pack_yml = root.join("pack.yml");
-    if pack_yml.is_file() {
+    if let Some(pack_yml) = existing_canonical_pack_file(root, "pack.yml")? {
         return Ok(pack_yml);
     }
 
-    let pack_yaml = root.join("pack.yaml");
-    if pack_yaml.is_file() {
+    if let Some(pack_yaml) = existing_canonical_pack_file(root, "pack.yaml")? {
         return Ok(pack_yaml);
     }
 
@@ -468,11 +469,39 @@ fn validate_safe_path(name: &str, value: &str) -> Result<()> {
 }
 
 fn require_template(root: &Path, value: &str) -> Result<()> {
-    let template = root.join(value);
-    if !template.is_file() {
-        bail!("template '{}' does not exist", template.display());
-    }
+    canonical_pack_file(root, value, "template")?;
     Ok(())
+}
+
+fn canonical_pack_file(root: &Path, relative_path: &str, kind: &str) -> Result<PathBuf> {
+    validate_safe_path(kind, relative_path)?;
+    let path = root.join(relative_path);
+    let canonical = path
+        .canonicalize()
+        .with_context(|| format!("{kind} '{}' does not exist", path.display()))?;
+    if !canonical.starts_with(root) {
+        bail!(
+            "{kind} '{}' resolves outside pack root '{}'",
+            path.display(),
+            root.display()
+        );
+    }
+    if !canonical.is_file() {
+        bail!("{kind} '{}' is not a file", path.display());
+    }
+    Ok(canonical)
+}
+
+fn existing_canonical_pack_file(root: &Path, relative_path: &str) -> Result<Option<PathBuf>> {
+    let path = root.join(relative_path);
+    if !path.exists() {
+        return Ok(None);
+    }
+    Ok(Some(canonical_pack_file(
+        root,
+        relative_path,
+        "pack manifest",
+    )?))
 }
 
 fn validate_labels(id: &str, labels: &[String], declared: &HashSet<&str>) -> Result<()> {
@@ -663,6 +692,39 @@ safety:
         let pack = Pack::load(temp.path().to_path_buf()).unwrap();
         pack.validate().unwrap();
         assert_eq!(pack.manifest().id, "yaml_pack");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_template_symlink_escape() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let outside = temp.path().join("outside.md");
+        fs::write(&outside, "secret").unwrap();
+
+        let pack_root = temp.path().join("pack");
+        fs::create_dir_all(pack_root.join("templates")).unwrap();
+        symlink(&outside, pack_root.join("templates").join("readme.md")).unwrap();
+        fs::write(
+            pack_root.join("pack.yml"),
+            r#"
+schema: 1
+id: bad_pack
+name: Bad pack
+safety:
+  max_writes: 1
+files:
+  - id: readme
+    path: README.md
+    template: templates/readme.md
+"#
+            .trim_start(),
+        )
+        .unwrap();
+
+        let pack = Pack::load(pack_root).unwrap();
+        assert!(pack.validate().is_err());
     }
 
     #[test]
