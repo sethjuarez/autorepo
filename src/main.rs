@@ -4,6 +4,7 @@ mod cli;
 mod doctor;
 mod executor;
 mod github;
+mod labs;
 mod markers;
 mod ops;
 mod pack;
