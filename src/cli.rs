@@ -12,6 +12,7 @@ use crate::{
     doctor,
     executor::Executor,
     github::RepoRef,
+    labs::{self, CaptureSessionArgs, InspectSessionArgs, RehydrateSessionArgs},
     pack::Pack,
     planner::{PlanContext, Planner},
     render, warm,
@@ -42,6 +43,36 @@ enum Command {
     Prepare(PrepareArgs),
     /// Render optional app session links, notes/checklists, and agent-task guidance.
     Warm(WarmArgs),
+    /// Experimental local Copilot app/session state tools.
+    Labs(LabsArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct LabsArgs {
+    #[command(subcommand)]
+    command: LabsCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum LabsCommand {
+    /// Experimental Copilot session snapshot tools.
+    Session(LabsSessionArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct LabsSessionArgs {
+    #[command(subcommand)]
+    command: LabsSessionCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum LabsSessionCommand {
+    /// Inspect a local Copilot session and its app indexes without changing state.
+    Inspect(InspectSessionCliArgs),
+    /// Capture a session fixture from local Copilot state.
+    Capture(CaptureSessionCliArgs),
+    /// Rehydrate a captured session fixture into a Copilot home.
+    Rehydrate(RehydrateSessionCliArgs),
 }
 
 #[derive(Debug, Args)]
@@ -78,6 +109,57 @@ pub struct WarmArgs {
     /// Limit warmup output/actions to one or more warmup ids.
     #[arg(long, value_delimiter = ',')]
     r#only: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+struct InspectSessionCliArgs {
+    /// Copilot session id to inspect.
+    session_id: String,
+    /// Copilot home directory. Defaults to ~/.copilot.
+    #[arg(long)]
+    copilot_home: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+struct CaptureSessionCliArgs {
+    /// Copilot session id to capture.
+    session_id: String,
+    /// Output directory for the snapshot fixture.
+    #[arg(long)]
+    out: PathBuf,
+    /// Copilot home directory. Defaults to ~/.copilot.
+    #[arg(long)]
+    copilot_home: Option<PathBuf>,
+    /// Include user and assistant transcript text in the snapshot fixture.
+    #[arg(long)]
+    include_transcripts: bool,
+}
+
+#[derive(Debug, Args)]
+struct RehydrateSessionCliArgs {
+    /// Target GitHub repository in OWNER/REPO form.
+    repo: String,
+    /// Snapshot fixture directory created by capture.
+    #[arg(long)]
+    snapshot: PathBuf,
+    /// Copilot home directory to write. Defaults to ~/.copilot.
+    #[arg(long)]
+    copilot_home: Option<PathBuf>,
+    /// Target workspace path to bind into the rehydrated session.
+    #[arg(long)]
+    workspace: PathBuf,
+    /// Target branch name to show in indexes.
+    #[arg(long)]
+    branch: Option<String>,
+    /// Print planned state changes without writing them.
+    #[arg(long, conflicts_with = "yes")]
+    dry_run: bool,
+    /// Confirm writing local Copilot session/index state.
+    #[arg(long, conflicts_with = "dry_run")]
+    yes: bool,
+    /// Allow writing to the default live ~/.copilot home.
+    #[arg(long)]
+    allow_live_copilot_home: bool,
 }
 
 pub async fn run() -> Result<()> {
@@ -128,6 +210,38 @@ pub async fn run() -> Result<()> {
                 &args.r#only,
             )?;
         }
+        Command::Labs(args) => match args.command {
+            LabsCommand::Session(args) => match args.command {
+                LabsSessionCommand::Inspect(args) => {
+                    labs::inspect_session(InspectSessionArgs {
+                        copilot_home: args.copilot_home,
+                        session_id: args.session_id,
+                    })?;
+                }
+                LabsSessionCommand::Capture(args) => {
+                    labs::capture_session(CaptureSessionArgs {
+                        copilot_home: args.copilot_home,
+                        session_id: args.session_id,
+                        out: args.out,
+                        include_transcripts: args.include_transcripts,
+                    })?;
+                }
+                LabsSessionCommand::Rehydrate(args) => {
+                    if !args.dry_run && !args.yes {
+                        bail!("labs session rehydrate requires either --dry-run or --yes");
+                    }
+                    labs::rehydrate_session(RehydrateSessionArgs {
+                        copilot_home: args.copilot_home,
+                        repo: args.repo,
+                        snapshot: args.snapshot,
+                        workspace: args.workspace,
+                        branch: args.branch,
+                        dry_run: args.dry_run,
+                        allow_live_copilot_home: args.allow_live_copilot_home,
+                    })?;
+                }
+            },
+        },
     }
 
     Ok(())

@@ -18,6 +18,7 @@ The write executor applies supported safe writes serially. Dry runs and validati
 - `autorepo warm OWNER/REPO --pack <PACK_SOURCE> --only <ID> --open-app` opens one intentional Copilot app warmup target.
 - `autorepo warm OWNER/REPO --pack <PACK_SOURCE> --only <ID>` limits warmup output and launch actions to specific pack warmup items.
 - `autorepo warm OWNER/REPO --pack <PACK_SOURCE> --start-agent-tasks` includes optional cloud-agent task guidance.
+- `autorepo labs session ...` experimentally inspects, captures, and rehydrates local Copilot app session snapshots.
 
 The included `generic-starter` pack is useful for smoke testing the CLI and for shaping mostly empty demo repositories.
 
@@ -145,6 +146,42 @@ Copilot cloud-agent sessions are nondeterministic. They do not belong in the `pr
 `autorepo warm` renders warmup notes, checklists, Copilot app links, Copilot app session links, and automation draft links from the pack. App session links use the public `ghapp://session/new` route with the target repo, mode, and kickoff prompt encoded in the URL. Automation draft links use `ghapp://automations/new` and still require user confirmation in the app. Passing `--open-app` requires exactly one `--only <ID>` that points to an app link, app session, or automation draft, so the CLI opens one intentional warmup target instead of a noisy set of app surfaces.
 
 Cloud-agent tasks are still separate. They are async and nondeterministic, so they stay behind explicit opt-in flags and do not belong in the deterministic `prepare` plan.
+
+## Experimental session snapshots
+
+`autorepo labs session` is an experimental warmup tool for demos that need a Copilot app session to look lived-in, including completed turns. It treats local Copilot app state as an implementation detail and patches only a narrow allowlist of session/index records.
+
+Inspect a local session without changing state:
+
+```powershell
+autorepo labs session inspect <SESSION_ID>
+```
+
+Capture a fixture with explicit transcript opt-in:
+
+```powershell
+autorepo labs session capture <SESSION_ID> --out .\snapshots\facilitator --include-transcripts
+```
+
+Captured fixtures include user and assistant transcript text so they can recreate completed turns. Review them before sharing, and do not commit fixtures that contain secrets, private repo content, personal paths, or non-demo conversation history.
+
+Rehydrate into an isolated Copilot home that has been seeded with Copilot app databases:
+
+```powershell
+# With the Copilot app closed, seed an isolated home first.
+New-Item -ItemType Directory -Force .\.tmp\copilot-home
+Copy-Item $HOME\.copilot\data.db, $HOME\.copilot\session-store.db .\.tmp\copilot-home\
+
+autorepo labs session rehydrate sethjuarez/autorepo-test-demo `
+  --snapshot .\snapshots\facilitator `
+  --copilot-home .\.tmp\copilot-home `
+  --workspace .\.tmp\workspace `
+  --yes
+```
+
+Rehydrate writes a new session id, synthesized session folder, and app/history index rows for the target repository. The target Copilot home must already contain `data.db` and `session-store.db`, and the target repository must already be present as a configured project in that home. By default rehydrate refuses to write the live default `~/.copilot` home; pass `--copilot-home` for a seeded isolated home, or `--allow-live-copilot-home` when you intentionally want to patch the live app state.
+
+Close the Copilot app before writing to a live Copilot home. Running app instances may keep SQLite state cached or locked.
 
 ## Development
 
