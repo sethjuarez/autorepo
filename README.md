@@ -22,6 +22,10 @@ The write executor applies supported safe writes serially. Dry runs and validati
 
 The included `generic-starter` pack is useful for smoke testing the CLI and for shaping mostly empty demo repositories.
 
+## Copilot skill
+
+This repository includes a project skill at `.github/skills/autorepo/SKILL.md` with agent-facing command guidance, pack source examples, safety rules, and quality gates for future `autorepo` work.
+
 ## Install
 
 After the crate is published:
