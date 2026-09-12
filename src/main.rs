@@ -8,6 +8,7 @@ mod labs;
 mod markers;
 mod ops;
 mod pack;
+mod pack_scaffold;
 mod planner;
 mod render;
 mod warm;

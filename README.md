@@ -18,6 +18,7 @@ The write executor applies supported safe writes serially. Dry runs and validati
 - `autorepo warm OWNER/REPO --pack <PACK_SOURCE> --only <ID> --open-app` opens one intentional Copilot app warmup target.
 - `autorepo warm OWNER/REPO --pack <PACK_SOURCE> --only <ID>` limits warmup output and launch actions to specific pack warmup items.
 - `autorepo warm OWNER/REPO --pack <PACK_SOURCE> --start-agent-tasks` includes optional cloud-agent task guidance.
+- `autorepo pack-from <SOURCE> --out <PACK_DIR> --id <ID> --name <NAME>` scaffolds a strict starter pack from a local checkout or GitHub repository.
 - `autorepo labs session ...` experimentally inspects, captures, and rehydrates local Copilot app session snapshots.
 
 The included `generic-starter` pack is useful for smoke testing the CLI and for shaping mostly empty demo repositories.
@@ -78,6 +79,34 @@ Open a Copilot app warmup session:
 autorepo warm sethjuarez/autorepo-test-dry-run --pack builtin --only facilitator_session --open-app
 ```
 
+Scaffold a starter pack from a local repository checkout:
+
+```powershell
+autorepo pack-from C:\path\to\source-repo `
+  --out .\packs\contract-expert `
+  --id contract-expert `
+  --name "Contract expert" `
+  --include ".github/extensions/**" `
+  --include "src/contract-policy-expert-agent/**" `
+  --include "azure.yaml" `
+  --include "data/**" `
+  --include "docs/**" `
+  --include "README.md" `
+  --include "AGENTS.md" `
+  --include ".gitignore" `
+  --include ".github/copilot-instructions.md" `
+  --with-issues `
+  --with-warmup
+```
+
+Scaffold from a GitHub repository or repository folder:
+
+```powershell
+autorepo pack-from caldova/contract-policy-expert --ref main --out .\packs\contract-expert --id contract-expert --name "Contract expert" --include "README.md"
+autorepo pack-from "github:caldova/contract-policy-expert//fixtures/source?ref=main" --out .\packs\contract-expert --id contract-expert --name "Contract expert"
+autorepo pack-from "https://github.com/caldova/contract-policy-expert/tree/main/fixtures/source" --out .\packs\contract-expert --id contract-expert --name "Contract expert"
+```
+
 ## Pack model
 
 A pack is a folder with a `pack.yml` or `pack.yaml` manifest and templates.
@@ -111,6 +140,12 @@ Pack sources can be:
 The `?ref=` value is optional for `github:` sources. If omitted, `autorepo` uses the repository default branch. Remote pack sources are cloned into a temporary folder for the command and then removed.
 
 The manifest is strict. Unknown fields fail validation, paths must stay inside the pack, and resource IDs must be stable. Labels used by issues and pull requests have to be declared. References have to resolve. `safety.max_writes` caps the write plan.
+
+`autorepo pack-from` creates this same strict pack shape from a local checkout, `OWNER/REPO`, `github:OWNER/REPO//path?ref=<branch-or-tag>`, or a GitHub URL. Use `--ref <branch-or-tag>` with remote sources when the source string does not already include `?ref=` or a `/tree/<ref>/...` URL segment. Remote sources are shallow-cloned into a temporary folder and removed after the command. It copies selected UTF-8 text files to `templates/files/<repo-relative-path>`, writes `files` manifest entries whose `path` values preserve the target repository paths, and validates the generated pack before reporting success. If no `--include` patterns are supplied, it considers every file except default exclusions. Repeated `--include` and `--exclude` patterns use repository-relative globs with `/` separators; `--dry-run` prints the generated manifest and copy/skip summary without writing the output directory.
+
+Pack extraction has always-on hard exclusions for local, private, generated, and secret-bearing paths. It skips `.git`, other VCS metadata, real `.env` files while allowing explicit templates like `.env.example`, private keys/certificates, credentials files, editor state, OS files, logs, local databases, dependency folders such as `node_modules`, caches, build outputs such as `target`, `dist`, `build`, `.next`, `.turbo`, virtual environments, symlinks, unreadable files, and binary or non-UTF-8 files. User includes can narrow the selection and user excludes can remove more files, but V1 does not let includes override hard safety exclusions.
+
+Optional extraction stubs stay modest: `--with-issues` adds a `Review extracted pack` issue, and `--with-warmup` adds an app link plus a review app-session prompt. Labels, milestones, pull requests, workflow dispatches, repository issue migration, automation schedules, binary assets, and session snapshots remain manual in V1.
 
 Warmup items are intentionally separate from deterministic writes. Supported warmup kinds are:
 
@@ -197,6 +232,7 @@ cargo clippy -- -D warnings
 cargo test
 cargo run -- validate builtin
 cargo run -- prepare sethjuarez/autorepo-test-dry-run --pack builtin --dry-run
+cargo run -- pack-from . --out .\.tmp\self-pack --id self-pack --name "Self pack" --include "README.md" --dry-run
 ```
 
 Install the optional pre-commit hooks:

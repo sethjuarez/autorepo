@@ -14,6 +14,7 @@ use crate::{
     github::RepoRef,
     labs::{self, CaptureSessionArgs, InspectSessionArgs, RehydrateSessionArgs},
     pack::Pack,
+    pack_scaffold::{self, FromRepoOptions},
     planner::{PlanContext, Planner},
     render, warm,
 };
@@ -43,8 +44,24 @@ enum Command {
     Prepare(PrepareArgs),
     /// Render optional app session links, notes/checklists, and agent-task guidance.
     Warm(WarmArgs),
+    /// Scaffold a pack from a local checkout or GitHub repository.
+    PackFrom(FromRepoCliArgs),
+    /// Create and inspect pack authoring artifacts.
+    Pack(PackArgs),
     /// Experimental local Copilot app/session state tools.
     Labs(LabsArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct PackArgs {
+    #[command(subcommand)]
+    command: PackCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum PackCommand {
+    /// Scaffold a pack from a local checkout or GitHub repository.
+    FromRepo(FromRepoCliArgs),
 }
 
 #[derive(Debug, Args)]
@@ -109,6 +126,42 @@ pub struct WarmArgs {
     /// Limit warmup output/actions to one or more warmup ids.
     #[arg(long, value_delimiter = ',')]
     r#only: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+struct FromRepoCliArgs {
+    /// Local checkout path, OWNER/REPO, github:OWNER/REPO, or GitHub URL to extract templates from.
+    source: String,
+    /// Remote branch or tag to clone. Only valid for remote sources.
+    #[arg(long = "ref")]
+    git_ref: Option<String>,
+    /// Output pack directory to create.
+    #[arg(long)]
+    out: PathBuf,
+    /// Stable pack id.
+    #[arg(long)]
+    id: String,
+    /// Human-readable pack name.
+    #[arg(long)]
+    name: String,
+    /// Optional pack description.
+    #[arg(long)]
+    description: Option<String>,
+    /// Include glob relative to the source repo. Repeats allowed. Defaults to everything.
+    #[arg(long)]
+    include: Vec<String>,
+    /// Exclude glob relative to the source repo. Repeats allowed.
+    #[arg(long)]
+    exclude: Vec<String>,
+    /// Add a starter issue asking maintainers to review the extracted pack.
+    #[arg(long)]
+    with_issues: bool,
+    /// Add modest Copilot app warmup stubs.
+    #[arg(long)]
+    with_warmup: bool,
+    /// Print the generated manifest and copy summary without writing files.
+    #[arg(long)]
+    dry_run: bool,
 }
 
 #[derive(Debug, Args)]
@@ -210,6 +263,38 @@ pub async fn run() -> Result<()> {
                 &args.r#only,
             )?;
         }
+        Command::PackFrom(args) => {
+            pack_scaffold::from_repo(FromRepoOptions {
+                source: args.source,
+                git_ref: args.git_ref,
+                out: args.out,
+                id: args.id,
+                name: args.name,
+                description: args.description,
+                include: args.include,
+                exclude: args.exclude,
+                with_issues: args.with_issues,
+                with_warmup: args.with_warmup,
+                dry_run: args.dry_run,
+            })?;
+        }
+        Command::Pack(args) => match args.command {
+            PackCommand::FromRepo(args) => {
+                pack_scaffold::from_repo(FromRepoOptions {
+                    source: args.source,
+                    git_ref: args.git_ref,
+                    out: args.out,
+                    id: args.id,
+                    name: args.name,
+                    description: args.description,
+                    include: args.include,
+                    exclude: args.exclude,
+                    with_issues: args.with_issues,
+                    with_warmup: args.with_warmup,
+                    dry_run: args.dry_run,
+                })?;
+            }
+        },
         Command::Labs(args) => match args.command {
             LabsCommand::Session(args) => match args.command {
                 LabsSessionCommand::Inspect(args) => {
