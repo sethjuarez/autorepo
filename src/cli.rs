@@ -227,7 +227,7 @@ struct PackPublishCliArgs {
     /// Base branch for the publish branch and PR. Defaults to the target repository default branch.
     #[arg(long)]
     base: Option<String>,
-    /// Use this local checkout of the target repository instead of cloning a temporary checkout.
+    /// Use this clean local checkout's origin URL without mutating its branch or files.
     #[arg(long)]
     target_checkout: Option<PathBuf>,
     /// Stable pack id. Required when creating a new pack.

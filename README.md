@@ -163,7 +163,7 @@ autorepo pack update . `
   --include ".github/copilot-instructions.md"
 ```
 
-`pack update` preserves curated pack metadata by default: `id`, `name`, `description`, labels, milestones, issues, pull requests, workflow dispatches, warmup entries, and non-file templates stay in place. It refreshes `templates/files/**`, replaces the manifest `files` entries, recalculates `safety.max_writes`, applies the same hard exclusions as `pack-from`, and validates the result. Use `--replace` only when you intentionally want to regenerate the whole pack directory.
+`pack update` preserves curated pack metadata by default: `id`, `name`, `description`, labels, milestones, issues, pull requests, workflow dispatches, warmup entries, and non-file templates stay in place. It refreshes `templates/files/**`, replaces the manifest `files` entries, recalculates `safety.max_writes`, applies the same hard exclusions as `pack-from`, and validates the result. Use `--replace` only when you intentionally want to regenerate the whole pack directory; metadata flags such as `--id`, `--name`, and `--description` require `--replace` when updating an existing pack.
 
 Publish a refreshed pack to a catalog repository branch:
 
@@ -195,7 +195,7 @@ autorepo pack publish . `
   --yes
 ```
 
-`pack publish` uses the local `git` and `gh` CLIs instead of handling credentials itself. By default it clones the target repository into a temporary checkout, creates or updates the requested branch, runs `pack update`, validates the pack, commits changed files under `--target-path`, pushes the branch, and optionally opens a PR. Use `--target-checkout <PATH>` to reuse an existing clean local checkout. Use `--base <BRANCH>` when you want the publish branch and PR based on a branch other than the target repository default.
+`pack publish` uses the local `git` and `gh` CLIs instead of handling credentials itself. By default it clones the target repository into a temporary checkout, creates or updates the requested branch, runs `pack update`, validates the pack, commits changed files under `--target-path`, pushes the branch, and optionally opens a PR. Use `--target-checkout <PATH>` to use the `origin` from an existing local checkout without mutating that checkout. Use `--base <BRANCH>` when you want the first publish branch based on a branch other than the target repository default.
 
 Warmup items are intentionally separate from deterministic writes. Supported warmup kinds are:
 

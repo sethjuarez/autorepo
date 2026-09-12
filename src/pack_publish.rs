@@ -2,7 +2,6 @@ use std::{
     fs,
     path::{Component, Path, PathBuf},
     process::Command as ProcessCommand,
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result, bail};
@@ -51,43 +50,13 @@ pub struct PackPublishOptions {
     pub dry_run: bool,
 }
 
-#[derive(Debug)]
-struct TempDir {
-    path: PathBuf,
-}
-
-impl TempDir {
-    fn new(prefix: &str) -> Result<Self> {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .context("system clock is before UNIX_EPOCH")?
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!("{prefix}-{}-{now}", std::process::id()));
-        fs::create_dir_all(&path)
-            .with_context(|| format!("failed to create {}", path.display()))?;
-        Ok(Self { path })
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.path);
-    }
-}
-
 pub fn update(options: PackUpdateOptions) -> Result<()> {
     let existing = options.out.exists() && !is_empty_dir(&options.out)?;
     if existing && !options.replace {
         update_existing_pack(&options)
+    } else if existing && options.replace {
+        replace_existing_pack(options)
     } else {
-        if options.replace && options.out.exists() && !options.dry_run {
-            fs::remove_dir_all(&options.out)
-                .with_context(|| format!("failed to remove '{}'", options.out.display()))?;
-        }
         let metadata =
             resolve_metadata(&options.out, options.id, options.name, options.description)?;
         pack_scaffold::from_repo(FromRepoOptions {
@@ -110,30 +79,29 @@ pub fn publish(options: PackPublishOptions) -> Result<()> {
     validate_relative_path(&options.target_path, "target path")?;
     validate_branch(&options.branch)?;
 
-    let temp_checkout;
-    let checkout = if options.dry_run {
-        temp_checkout = TempDir::new("autorepo-pack-publish")?;
-        clone_target_repo(&options, temp_checkout.path())?;
-        temp_checkout.path().join("repo")
-    } else if let Some(target_checkout) = &options.target_checkout {
-        ensure_clean_checkout(target_checkout)?;
-        target_checkout.clone()
-    } else {
-        temp_checkout = TempDir::new("autorepo-pack-publish")?;
-        clone_target_repo(&options, temp_checkout.path())?;
-        temp_checkout.path().join("repo")
-    };
+    if let Some(target_checkout) = &options.target_checkout {
+        verify_origin_matches(target_checkout, &options.target_repo)?;
+    }
+
+    let temp_checkout = tempfile::Builder::new()
+        .prefix("autorepo-pack-publish-")
+        .tempdir()
+        .context("failed to create temporary target checkout")?;
+    clone_target_repo(&options, temp_checkout.path())?;
+    let checkout = temp_checkout.path().join("repo");
+    verify_origin_matches(&checkout, &options.target_repo)?;
 
     checkout_publish_branch(&checkout, &options.branch, options.base.as_deref())?;
 
     let target_pack = checkout.join(&options.target_path);
+    let existing_pack = target_pack.exists() && !is_empty_dir(&target_pack)?;
     update(PackUpdateOptions {
         source: options.source.clone(),
         git_ref: options.git_ref.clone(),
         out: target_pack,
-        id: options.id.clone(),
-        name: options.name.clone(),
-        description: options.description.clone(),
+        id: metadata_option(existing_pack, options.replace, &options.id),
+        name: metadata_option(existing_pack, options.replace, &options.name),
+        description: metadata_option(existing_pack, options.replace, &options.description),
         include: options.include.clone(),
         exclude: options.exclude.clone(),
         with_issues: options.with_issues,
@@ -142,7 +110,10 @@ pub fn publish(options: PackPublishOptions) -> Result<()> {
         dry_run: false,
     })?;
 
-    let status = git_output(&checkout, ["status", "--short"])?;
+    let status = git_output(
+        &checkout,
+        ["status", "--short", "--", &path_arg(&options.target_path)],
+    )?;
     if status.trim().is_empty() {
         println!(
             "No changes to publish for {}/{}:{}.",
@@ -153,25 +124,69 @@ pub fn publish(options: PackPublishOptions) -> Result<()> {
         return Ok(());
     }
 
+    fn metadata_option(
+        existing_pack: bool,
+        replace: bool,
+        value: &Option<String>,
+    ) -> Option<String> {
+        if existing_pack && !replace {
+            None
+        } else {
+            value.clone()
+        }
+    }
+
     println!("Pack publish branch: {}", options.branch);
     println!("Changed files:\n{status}");
 
     if options.dry_run {
+        git(
+            &checkout,
+            ["add", "-A", "--", &path_arg(&options.target_path)],
+        )?;
         let diff = git_output(&checkout, ["diff", "--", &path_arg(&options.target_path)])?;
+        let cached_diff = git_output(
+            &checkout,
+            ["diff", "--cached", "--", &path_arg(&options.target_path)],
+        )?;
         if !diff.trim().is_empty() {
             println!("--- diff ---\n{diff}");
+        }
+        if !cached_diff.trim().is_empty() {
+            println!("--- staged diff ---\n{cached_diff}");
         }
         println!("Dry run: not committing, pushing, or opening a PR.");
         return Ok(());
     }
 
-    git(&checkout, ["add", "--", &path_arg(&options.target_path)])?;
+    git(
+        &checkout,
+        ["add", "-A", "--", &path_arg(&options.target_path)],
+    )?;
     let commit_message = format!(
         "Update {} starter pack\n\nGenerated by autorepo pack publish.",
         pack_name_for_message(&options.target_path)
     );
-    git(&checkout, ["commit", "-m", &commit_message])?;
-    git(&checkout, ["push", "-u", "origin", &options.branch])?;
+    git(
+        &checkout,
+        [
+            "-c",
+            "user.name=Autorepo",
+            "-c",
+            "user.email=autorepo@users.noreply.github.com",
+            "commit",
+            "-m",
+            &commit_message,
+        ],
+    )?;
+    git(
+        &checkout,
+        [
+            "push",
+            "origin",
+            &format!("HEAD:refs/heads/{}", options.branch),
+        ],
+    )?;
     println!("Pushed branch '{}'.", options.branch);
 
     if options.pr {
@@ -189,13 +204,19 @@ struct Metadata {
 }
 
 fn update_existing_pack(options: &PackUpdateOptions) -> Result<()> {
+    if options.id.is_some() || options.name.is_some() || options.description.is_some() {
+        bail!("--id, --name, and --description require --replace when updating an existing pack");
+    }
     let metadata = resolve_metadata(
         &options.out,
         options.id.clone(),
         options.name.clone(),
         options.description.clone(),
     )?;
-    let temp = TempDir::new("autorepo-pack-update")?;
+    let temp = tempfile::Builder::new()
+        .prefix("autorepo-pack-update-")
+        .tempdir()
+        .context("failed to create temporary pack update directory")?;
     let generated = temp.path().join("pack");
     pack_scaffold::from_repo(FromRepoOptions {
         source: options.source.clone(),
@@ -225,6 +246,46 @@ fn update_existing_pack(options: &PackUpdateOptions) -> Result<()> {
     pack.validate()
         .with_context(|| format!("updated pack '{}' did not validate", options.out.display()))?;
     println!("Updated pack '{}' is valid.", pack.manifest().id);
+    Ok(())
+}
+
+fn replace_existing_pack(options: PackUpdateOptions) -> Result<()> {
+    let metadata = resolve_metadata(
+        &options.out,
+        options.id.clone(),
+        options.name.clone(),
+        options.description.clone(),
+    )?;
+    let temp = tempfile::Builder::new()
+        .prefix("autorepo-pack-replace-")
+        .tempdir()
+        .context("failed to create temporary pack replace directory")?;
+    let generated = temp.path().join("pack");
+    pack_scaffold::from_repo(FromRepoOptions {
+        source: options.source,
+        git_ref: options.git_ref,
+        out: generated.clone(),
+        id: metadata.id,
+        name: metadata.name,
+        description: metadata.description,
+        include: options.include,
+        exclude: options.exclude,
+        with_issues: options.with_issues,
+        with_warmup: options.with_warmup,
+        dry_run: options.dry_run,
+    })?;
+
+    if options.dry_run {
+        return Ok(());
+    }
+
+    fs::remove_dir_all(&options.out)
+        .with_context(|| format!("failed to remove '{}'", options.out.display()))?;
+    copy_dir(&generated, &options.out)?;
+    let pack = Pack::load(options.out.clone())?;
+    pack.validate()
+        .with_context(|| format!("replaced pack '{}' did not validate", options.out.display()))?;
+    println!("Replaced pack '{}' is valid.", pack.manifest().id);
     Ok(())
 }
 
@@ -308,7 +369,6 @@ fn count_non_file_writes(manifest: &Mapping) -> usize {
         "issues",
         "pull_requests",
         "workflow_dispatches",
-        "warmup",
     ]
     .iter()
     .map(|key| {
@@ -379,16 +439,7 @@ fn manifest_path(pack_dir: &Path) -> Result<PathBuf> {
 
 fn clone_target_repo(options: &PackPublishOptions, temp: &Path) -> Result<()> {
     let checkout = temp.join("repo");
-    let source = options
-        .target_checkout
-        .as_ref()
-        .map(|path| path.display().to_string())
-        .unwrap_or_else(|| {
-            format!(
-                "https://github.com/{}/{}.git",
-                options.target_repo.owner, options.target_repo.name
-            )
-        });
+    let source = target_clone_url(options)?;
     command(
         ProcessCommand::new("git")
             .args(["clone", &source])
@@ -398,8 +449,29 @@ fn clone_target_repo(options: &PackPublishOptions, temp: &Path) -> Result<()> {
     Ok(())
 }
 
+fn target_clone_url(options: &PackPublishOptions) -> Result<String> {
+    if let Some(target_checkout) = &options.target_checkout {
+        return Ok(
+            git_output(target_checkout, ["remote", "get-url", "origin"])?
+                .trim()
+                .to_owned(),
+        );
+    }
+
+    Ok({
+        format!(
+            "https://github.com/{}/{}.git",
+            options.target_repo.owner, options.target_repo.name
+        )
+    })
+}
+
 fn checkout_publish_branch(checkout: &Path, branch: &str, base: Option<&str>) -> Result<()> {
-    if let Some(base) = base {
+    git(checkout, ["fetch", "origin"])?;
+    let remote_branch = format!("origin/{branch}");
+    if ref_exists(checkout, &remote_branch) {
+        git(checkout, ["checkout", "-B", branch, &remote_branch])?;
+    } else if let Some(base) = base {
         git(checkout, ["fetch", "origin", base])?;
         git(
             checkout,
@@ -421,6 +493,10 @@ fn checkout_publish_branch(checkout: &Path, branch: &str, base: Option<&str>) ->
     Ok(())
 }
 
+fn ref_exists(checkout: &Path, name: &str) -> bool {
+    git_output(checkout, ["rev-parse", "--verify", "--quiet", name]).is_ok()
+}
+
 fn remote_default_branch(checkout: &Path) -> Option<String> {
     let head = git_output(checkout, ["rev-parse", "--abbrev-ref", "origin/HEAD"]).ok()?;
     head.trim()
@@ -429,15 +505,30 @@ fn remote_default_branch(checkout: &Path) -> Option<String> {
         .map(str::to_owned)
 }
 
-fn ensure_clean_checkout(checkout: &Path) -> Result<()> {
-    let status = git_output(checkout, ["status", "--porcelain"])?;
-    if !status.trim().is_empty() {
+fn verify_origin_matches(checkout: &Path, expected: &RepoRef) -> Result<()> {
+    let origin = git_output(checkout, ["remote", "get-url", "origin"])?;
+    if !origin_matches_repo(origin.trim(), expected) {
         bail!(
-            "target checkout '{}' has uncommitted changes; commit, stash, or use --dry-run first",
-            checkout.display()
+            "target checkout origin '{}' does not match --target-repo {}/{}",
+            origin.trim(),
+            expected.owner,
+            expected.name
         );
     }
     Ok(())
+}
+
+fn origin_matches_repo(origin: &str, expected: &RepoRef) -> bool {
+    let normalized = origin.replace('\\', "/").to_ascii_lowercase();
+    let normalized = normalized.trim_end_matches(".git");
+    let suffix = format!(
+        "{}/{}",
+        expected.owner.to_ascii_lowercase(),
+        expected.name.to_ascii_lowercase()
+    );
+    normalized == suffix
+        || normalized.ends_with(&format!("/{suffix}"))
+        || normalized.ends_with(&format!(":{suffix}"))
 }
 
 fn open_or_reuse_pr(options: &PackPublishOptions) -> Result<()> {
@@ -563,7 +654,14 @@ fn validate_branch(branch: &str) -> Result<()> {
         || branch.starts_with('-')
         || branch.contains("..")
         || branch.contains('\\')
+        || branch.contains('@')
+        || branch.ends_with('/')
+        || branch.ends_with('.')
+        || branch.ends_with(".lock")
         || branch.chars().any(char::is_whitespace)
+        || branch
+            .chars()
+            .any(|ch| ch.is_control() || matches!(ch, ':' | '~' | '^' | '?' | '*' | '['))
     {
         bail!("branch '{branch}' is not a safe git branch name");
     }

@@ -104,7 +104,7 @@ autorepo pack publish . `
   --dry-run
 ```
 
-After reviewing the diff, rerun with `--yes` to commit and push the branch, and add `--pr` to open or reuse a GitHub pull request. `pack publish` uses local `git` and `gh` credentials; it does not manage tokens. Use `--target-checkout <PATH>` only for a clean local checkout. Use `--replace` only when curated pack metadata/templates should be regenerated instead of preserved.
+After reviewing the diff, rerun with `--yes` to commit and push the branch, and add `--pr` to open or reuse a GitHub pull request. `pack publish` uses local `git` and `gh` credentials; it does not manage tokens. Use `--target-checkout <PATH>` to borrow that checkout's `origin` without mutating its branch or files. Use `--replace` only when curated pack metadata/templates should be regenerated instead of preserved.
 
 Experimental session snapshot flow:
 
@@ -134,7 +134,7 @@ Use repeated `--include` globs to keep the starter intentional. Use repeated `--
 
 `--with-issues` adds a single review issue stub. `--with-warmup` adds a repo app link and review app-session prompt. Keep rich labels, milestones, pull requests, workflow dispatches, issue migration, automation schedules, binary assets, and session snapshots manual unless the pack author intentionally adds them after reviewing the generated pack.
 
-`autorepo pack update` is the refresh path for the demo loop. It keeps curated manifest sections and non-file templates, refreshes only `templates/files/**`, replaces manifest `files`, recalculates `safety.max_writes`, and validates the pack. `autorepo pack publish` wraps `pack update` with target-repository clone/branch/commit/push/optional-PR primitives so pack catalogs can receive community-style contributions by branch and pull request.
+`autorepo pack update` is the refresh path for the demo loop. It keeps curated manifest sections and non-file templates, refreshes only `templates/files/**`, replaces manifest `files`, recalculates `safety.max_writes`, and validates the pack. Metadata flags like `--id`, `--name`, and `--description` require `--replace` when updating an existing pack. `autorepo pack publish` wraps `pack update` with target-repository clone/branch/commit/push/optional-PR primitives so pack catalogs can receive community-style contributions by branch and pull request.
 
 ## Safety rules
 
