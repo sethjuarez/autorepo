@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and release-please.
 
+## [0.10.0](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.9.0...autorepo-v0.10.0) (2026-09-12)
+
+
+### Features
+
+* add pack publish workflow ([79e95c5](https://github.com/sethjuarez/autorepo/commit/79e95c5e8161793e1cfc7329dfa24d9c9ecff378))
+
+
+### Bug Fixes
+
+* harden pack publish workflow ([3a89df7](https://github.com/sethjuarez/autorepo/commit/3a89df72f7ba465d72d517b2711143d759ca1b3a))
+* open pack publish PR for unchanged branches ([8e2fbb1](https://github.com/sethjuarez/autorepo/commit/8e2fbb180c8570b6eb11d1cbf5aa0e619cb49b57))
+* preserve pack manifest comments on update ([1ad4c87](https://github.com/sethjuarez/autorepo/commit/1ad4c875951e6c78743a28ffef4db63630fbdf37))
+
 ## [0.9.0](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.8.0...autorepo-v0.9.0) (2026-09-12)
 
 
