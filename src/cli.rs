@@ -14,6 +14,7 @@ use crate::{
     github::RepoRef,
     labs::{self, CaptureSessionArgs, InspectSessionArgs, RehydrateSessionArgs},
     pack::Pack,
+    pack_publish::{self, PackPublishOptions, PackUpdateOptions},
     pack_scaffold::{self, FromRepoOptions},
     planner::{PlanContext, Planner},
     render, warm,
@@ -62,6 +63,10 @@ pub struct PackArgs {
 enum PackCommand {
     /// Scaffold a pack from a local checkout or GitHub repository.
     FromRepo(FromRepoCliArgs),
+    /// Refresh a pack from a local checkout or GitHub repository.
+    Update(PackUpdateCliArgs),
+    /// Refresh a pack in a target git repository, push a branch, and optionally open a PR.
+    Publish(PackPublishCliArgs),
 }
 
 #[derive(Debug, Args)]
@@ -162,6 +167,102 @@ struct FromRepoCliArgs {
     /// Print the generated manifest and copy summary without writing files.
     #[arg(long)]
     dry_run: bool,
+}
+
+#[derive(Debug, Args)]
+struct PackUpdateCliArgs {
+    /// Local checkout path, OWNER/REPO, github:OWNER/REPO, or GitHub URL to extract templates from.
+    source: String,
+    /// Remote branch or tag to clone. Only valid for remote sources.
+    #[arg(long = "ref")]
+    git_ref: Option<String>,
+    /// Existing or new pack directory to refresh.
+    #[arg(long)]
+    out: PathBuf,
+    /// Stable pack id. Required when creating a new pack.
+    #[arg(long)]
+    id: Option<String>,
+    /// Human-readable pack name. Required when creating a new pack.
+    #[arg(long)]
+    name: Option<String>,
+    /// Optional pack description. Used when creating a new pack or replacing the manifest.
+    #[arg(long)]
+    description: Option<String>,
+    /// Include glob relative to the source repo. Repeats allowed. Defaults to everything.
+    #[arg(long)]
+    include: Vec<String>,
+    /// Exclude glob relative to the source repo. Repeats allowed.
+    #[arg(long)]
+    exclude: Vec<String>,
+    /// Add starter issue stubs when creating a new pack or using --replace.
+    #[arg(long)]
+    with_issues: bool,
+    /// Add modest Copilot app warmup stubs when creating a new pack or using --replace.
+    #[arg(long)]
+    with_warmup: bool,
+    /// Replace the whole pack directory instead of preserving curated metadata/templates.
+    #[arg(long)]
+    replace: bool,
+    /// Print the refresh summary without writing files.
+    #[arg(long)]
+    dry_run: bool,
+}
+
+#[derive(Debug, Args)]
+struct PackPublishCliArgs {
+    /// Local checkout path, OWNER/REPO, github:OWNER/REPO, or GitHub URL to extract templates from.
+    source: String,
+    /// Remote branch or tag to clone. Only valid for remote sources.
+    #[arg(long = "ref")]
+    git_ref: Option<String>,
+    /// GitHub repository that owns the pack catalog, in OWNER/REPO form.
+    #[arg(long)]
+    target_repo: String,
+    /// Pack path inside the target repository, for example packs/contract-expert.
+    #[arg(long)]
+    target_path: PathBuf,
+    /// Branch to create or update in the target repository.
+    #[arg(long)]
+    branch: String,
+    /// Base branch for the publish branch and PR. Defaults to the target repository default branch.
+    #[arg(long)]
+    base: Option<String>,
+    /// Use this clean local checkout's origin URL without mutating its branch or files.
+    #[arg(long)]
+    target_checkout: Option<PathBuf>,
+    /// Stable pack id. Required when creating a new pack.
+    #[arg(long)]
+    id: Option<String>,
+    /// Human-readable pack name. Required when creating a new pack.
+    #[arg(long)]
+    name: Option<String>,
+    /// Optional pack description. Used when creating a new pack or replacing the manifest.
+    #[arg(long)]
+    description: Option<String>,
+    /// Include glob relative to the source repo. Repeats allowed. Defaults to everything.
+    #[arg(long)]
+    include: Vec<String>,
+    /// Exclude glob relative to the source repo. Repeats allowed.
+    #[arg(long)]
+    exclude: Vec<String>,
+    /// Add starter issue stubs when creating a new pack or using --replace.
+    #[arg(long)]
+    with_issues: bool,
+    /// Add modest Copilot app warmup stubs when creating a new pack or using --replace.
+    #[arg(long)]
+    with_warmup: bool,
+    /// Replace the whole pack directory instead of preserving curated metadata/templates.
+    #[arg(long)]
+    replace: bool,
+    /// Open or reuse a pull request for the pushed branch.
+    #[arg(long)]
+    pr: bool,
+    /// Print the publish plan and generated diff without committing or pushing.
+    #[arg(long, conflicts_with = "yes")]
+    dry_run: bool,
+    /// Confirm branch creation, commit, push, and optional PR creation.
+    #[arg(long, conflicts_with = "dry_run")]
+    yes: bool,
 }
 
 #[derive(Debug, Args)]
@@ -291,6 +392,46 @@ pub async fn run() -> Result<()> {
                     exclude: args.exclude,
                     with_issues: args.with_issues,
                     with_warmup: args.with_warmup,
+                    dry_run: args.dry_run,
+                })?;
+            }
+            PackCommand::Update(args) => {
+                pack_publish::update(PackUpdateOptions {
+                    source: args.source,
+                    git_ref: args.git_ref,
+                    out: args.out,
+                    id: args.id,
+                    name: args.name,
+                    description: args.description,
+                    include: args.include,
+                    exclude: args.exclude,
+                    with_issues: args.with_issues,
+                    with_warmup: args.with_warmup,
+                    replace: args.replace,
+                    dry_run: args.dry_run,
+                })?;
+            }
+            PackCommand::Publish(args) => {
+                if !args.dry_run && !args.yes {
+                    bail!("pack publish requires either --dry-run or --yes");
+                }
+                pack_publish::publish(PackPublishOptions {
+                    source: args.source,
+                    git_ref: args.git_ref,
+                    target_repo: RepoRef::parse(&args.target_repo)?,
+                    target_path: args.target_path,
+                    branch: args.branch,
+                    base: args.base,
+                    target_checkout: args.target_checkout,
+                    id: args.id,
+                    name: args.name,
+                    description: args.description,
+                    include: args.include,
+                    exclude: args.exclude,
+                    with_issues: args.with_issues,
+                    with_warmup: args.with_warmup,
+                    replace: args.replace,
+                    pr: args.pr,
                     dry_run: args.dry_run,
                 })?;
             }

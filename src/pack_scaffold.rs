@@ -517,7 +517,6 @@ fn build_manifest(options: &FromRepoOptions, files: &[Candidate]) -> Result<Mani
         Vec::new()
     };
     let warmup = if options.with_warmup {
-        write_count += 2;
         vec![
             WarmupEntry {
                 id: "open_repo".to_owned(),

@@ -78,6 +78,34 @@ autorepo pack-from caldova/contract-policy-expert --ref main --out .\packs\contr
 autorepo pack-from "github:caldova/contract-policy-expert//fixtures/source?ref=main" --out .\packs\contract-expert --id contract-expert --name "Contract expert"
 ```
 
+Refresh an existing pack after improving a demo checkout:
+
+```powershell
+autorepo pack update . `
+  --out .\packs\contract-expert `
+  --include ".github/extensions/**" `
+  --include "src/contract-policy-expert-agent/**" `
+  --include "azure.yaml" `
+  --include "data/**" `
+  --include "docs/**" `
+  --include "README.md" `
+  --include "AGENTS.md" `
+  --include ".gitignore" `
+  --include ".github/copilot-instructions.md"
+```
+
+Publish that refresh as a reviewable branch in a pack catalog:
+
+```powershell
+autorepo pack publish . `
+  --target-repo sethjuarez/ghcp-starters `
+  --target-path packs/contract-expert `
+  --branch pack/contract-expert-refresh `
+  --dry-run
+```
+
+After reviewing the diff, rerun with `--yes` to commit and push the branch, and add `--pr` to open or reuse a GitHub pull request. `pack publish` uses local `git` and `gh` credentials; it does not manage tokens. Use `--target-checkout <PATH>` to borrow that checkout's `origin` without mutating its branch or files. Use `--replace` only when curated pack metadata/templates should be regenerated instead of preserved.
+
 Experimental session snapshot flow:
 
 ```powershell
@@ -105,6 +133,8 @@ Remote pack sources are shallow-cloned into a temporary folder. GitHub tree URLs
 Use repeated `--include` globs to keep the starter intentional. Use repeated `--exclude` globs to remove project-specific files. The command has always-on hard exclusions for `.git`, other VCS metadata, real `.env` files while allowing explicit templates like `.env.example`, private keys/certificates, credentials files, editor state, OS files, logs, local databases, dependency folders, caches, build outputs, virtual environments, symlinks, unreadable files, and binary/non-UTF-8 files. Includes do not override these hard safety exclusions.
 
 `--with-issues` adds a single review issue stub. `--with-warmup` adds a repo app link and review app-session prompt. Keep rich labels, milestones, pull requests, workflow dispatches, issue migration, automation schedules, binary assets, and session snapshots manual unless the pack author intentionally adds them after reviewing the generated pack.
+
+`autorepo pack update` is the refresh path for the demo loop. It keeps curated manifest sections, comments outside generated fields, and non-file templates, refreshes only `templates/files/**`, surgically replaces manifest `files`, recalculates `safety.max_writes`, and validates the pack. Metadata flags like `--id`, `--name`, and `--description` require `--replace` when updating an existing pack. `autorepo pack publish` wraps `pack update` with target-repository clone/branch/commit/push/optional-PR primitives so pack catalogs can receive community-style contributions by branch and pull request.
 
 ## Safety rules
 
