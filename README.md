@@ -163,7 +163,7 @@ autorepo pack update . `
   --include ".github/copilot-instructions.md"
 ```
 
-`pack update` preserves curated pack metadata by default: `id`, `name`, `description`, labels, milestones, issues, pull requests, workflow dispatches, warmup entries, and non-file templates stay in place. It refreshes `templates/files/**`, replaces the manifest `files` entries, recalculates `safety.max_writes`, applies the same hard exclusions as `pack-from`, and validates the result. Use `--replace` only when you intentionally want to regenerate the whole pack directory; metadata flags such as `--id`, `--name`, and `--description` require `--replace` when updating an existing pack.
+`pack update` preserves curated pack metadata by default: `id`, `name`, `description`, labels, milestones, issues, pull requests, workflow dispatches, warmup entries, manifest comments outside generated fields, and non-file templates stay in place. It refreshes `templates/files/**`, surgically replaces the manifest `files` entries, recalculates `safety.max_writes`, applies the same hard exclusions as `pack-from`, and validates the result. Use `--replace` only when you intentionally want to regenerate the whole pack directory; metadata flags such as `--id`, `--name`, and `--description` require `--replace` when updating an existing pack.
 
 Publish a refreshed pack to a catalog repository branch:
 

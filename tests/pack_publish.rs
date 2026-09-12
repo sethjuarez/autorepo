@@ -16,12 +16,16 @@ fn pack_update_refreshes_files_and_preserves_curated_sections() {
         r#"schema: 1
 id: demo-pack
 name: Demo pack
+# Preserve this catalog note.
 safety:
+  # Keep this safety note.
   max_writes: 4
 files:
   - id: old
     path: OLD.md
     template: templates/files/OLD.md
+
+# Keep this issue rationale.
 issues:
   - id: review
     title: Review demo
@@ -57,6 +61,9 @@ warmup:
 
     let manifest = fs::read_to_string(pack.path().join("pack.yml")).unwrap();
     assert!(manifest.contains("id: demo-pack"));
+    assert!(manifest.contains("# Preserve this catalog note."));
+    assert!(manifest.contains("# Keep this safety note."));
+    assert!(manifest.contains("# Keep this issue rationale."));
     assert!(manifest.contains("template: templates/files/README.md"));
     assert!(manifest.contains("template: templates/files/docs/guide.md"));
     assert!(!manifest.contains("OLD.md"));
@@ -104,6 +111,49 @@ files:
     assert!(manifest.contains("name: Demo pack"));
     assert!(manifest.contains("path: README.md"));
     run_bin(&["validate", pack.path().to_str().unwrap()]);
+}
+
+#[test]
+fn pack_update_rejects_inline_safety_without_touching_existing_pack() {
+    let source = TempDir::new().unwrap();
+    write(source.path(), "README.md", "new readme");
+
+    let pack = TempDir::new().unwrap();
+    let original_manifest = r#"schema: 1
+id: demo-pack
+name: Demo pack
+safety: { max_writes: 1 }
+files:
+  - id: readme
+    path: README.md
+    template: templates/files/README.md
+"#;
+    write(pack.path(), "pack.yml", original_manifest);
+    write(pack.path(), "templates/files/README.md", "old readme");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_autorepo"))
+        .args([
+            "pack",
+            "update",
+            source.path().to_str().unwrap(),
+            "--out",
+            pack.path().to_str().unwrap(),
+            "--include",
+            "README.md",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("block mapping style"));
+    assert_eq!(
+        fs::read_to_string(pack.path().join("pack.yml")).unwrap(),
+        original_manifest
+    );
+    assert_eq!(
+        fs::read_to_string(pack.path().join("templates/files/README.md")).unwrap(),
+        "old readme"
+    );
 }
 
 #[test]

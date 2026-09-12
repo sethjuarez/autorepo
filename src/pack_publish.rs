@@ -320,7 +320,7 @@ fn refresh_files_and_manifest(target: &Path, generated: &Path) -> Result<()> {
         .with_context(|| format!("failed to read '{}'", target_manifest_path.display()))?;
     let generated_text = fs::read_to_string(&generated_manifest_path)
         .with_context(|| format!("failed to read '{}'", generated_manifest_path.display()))?;
-    let mut target_yaml: Value = serde_yaml::from_str(&target_text)
+    let target_yaml: Value = serde_yaml::from_str(&target_text)
         .with_context(|| format!("failed to parse '{}'", target_manifest_path.display()))?;
     let generated_yaml: Value = serde_yaml::from_str(&generated_text)
         .with_context(|| format!("failed to parse '{}'", generated_manifest_path.display()))?;
@@ -330,19 +330,13 @@ fn refresh_files_and_manifest(target: &Path, generated: &Path) -> Result<()> {
         .cloned()
         .unwrap_or_else(|| Value::Sequence(Vec::new()));
     let generated_file_count = generated_files.as_sequence().map_or(0, Vec::len);
-    let target_mapping = get_mapping_mut(&mut target_yaml)?;
-    target_mapping.insert(Value::String("files".to_owned()), generated_files);
-
+    let target_mapping = get_mapping(&target_yaml)?;
     let non_file_writes = count_non_file_writes(target_mapping);
     let max_writes = u32::try_from(non_file_writes + generated_file_count)
         .context("updated pack declares too many writes")?;
-    let safety = target_mapping
-        .entry(Value::String("safety".to_owned()))
-        .or_insert_with(|| Value::Mapping(Mapping::new()));
-    get_mapping_mut(safety)?.insert(
-        Value::String("max_writes".to_owned()),
-        Value::Number(max_writes.into()),
-    );
+
+    let rendered = update_manifest_text(&target_text, generated_files, max_writes)?;
+    validate_rendered_manifest(&rendered, generated_file_count, max_writes)?;
 
     let target_templates = target.join("templates").join("files");
     if target_templates.exists() {
@@ -354,11 +348,164 @@ fn refresh_files_and_manifest(target: &Path, generated: &Path) -> Result<()> {
         copy_dir(&generated_templates, &target_templates)?;
     }
 
-    let rendered =
-        serde_yaml::to_string(&target_yaml).context("failed to render updated pack.yml")?;
     fs::write(&target_manifest_path, rendered)
         .with_context(|| format!("failed to write '{}'", target_manifest_path.display()))?;
     Ok(())
+}
+
+fn update_manifest_text(
+    manifest_text: &str,
+    generated_files: Value,
+    max_writes: u32,
+) -> Result<String> {
+    let eol = dominant_line_ending(manifest_text);
+    let rendered_files =
+        render_top_level_value("files", generated_files).context("failed to render files block")?;
+    let rendered_files = normalize_line_endings(&rendered_files, eol);
+    let with_files = replace_top_level_block(manifest_text, "files", &rendered_files);
+    update_safety_max_writes(&with_files, max_writes, eol)
+}
+
+fn render_top_level_value(key: &str, value: Value) -> Result<String> {
+    let mut mapping = Mapping::new();
+    mapping.insert(Value::String(key.to_owned()), value);
+    serde_yaml::to_string(&Value::Mapping(mapping)).context("failed to render YAML block")
+}
+
+fn replace_top_level_block(text: &str, key: &str, replacement: &str) -> String {
+    let mut lines = split_lines(text);
+    let Some(start) = lines.iter().position(|line| is_top_level_key(line, key)) else {
+        let mut out = ensure_trailing_newline(text);
+        out.push_str(replacement);
+        return out;
+    };
+    let end = find_next_top_level_key(&lines, start + 1).unwrap_or(lines.len());
+    let end = preserve_leading_comments_before_key(&lines, start + 1, end);
+    let replacement_lines = split_lines(replacement);
+    lines.splice(start..end, replacement_lines);
+    lines.concat()
+}
+
+fn update_safety_max_writes(text: &str, max_writes: u32, eol: &str) -> Result<String> {
+    let mut lines = split_lines(text);
+    let Some(safety_start) = lines
+        .iter()
+        .position(|line| is_top_level_key(line, "safety"))
+    else {
+        bail!("pack manifest must contain a safety block");
+    };
+    if lines[safety_start]
+        .strip_prefix("safety:")
+        .is_some_and(|rest| !rest.trim().is_empty())
+    {
+        bail!("pack manifest safety block must use block mapping style for pack update");
+    }
+    let safety_end = find_next_top_level_key(&lines, safety_start + 1).unwrap_or(lines.len());
+    let replacement = format!("  max_writes: {max_writes}{eol}");
+
+    if let Some(index) = (safety_start + 1..safety_end).find(|index| {
+        lines[*index]
+            .trim_start()
+            .strip_prefix("max_writes:")
+            .is_some()
+    }) {
+        let indent = lines[index]
+            .chars()
+            .take_while(|ch| ch.is_whitespace() && *ch != '\r' && *ch != '\n')
+            .collect::<String>();
+        lines[index] = format!("{indent}max_writes: {max_writes}{eol}");
+    } else {
+        lines.insert(safety_start + 1, replacement);
+    }
+
+    Ok(lines.concat())
+}
+
+fn preserve_leading_comments_before_key(lines: &[String], start: usize, end: usize) -> usize {
+    let mut adjusted = end;
+    while adjusted > start {
+        let previous = &lines[adjusted - 1];
+        if previous.trim().is_empty() || previous.trim_start().starts_with('#') {
+            adjusted -= 1;
+        } else {
+            break;
+        }
+    }
+    adjusted
+}
+
+fn validate_rendered_manifest(
+    rendered: &str,
+    expected_file_count: usize,
+    expected_max_writes: u32,
+) -> Result<()> {
+    let rendered_yaml: Value =
+        serde_yaml::from_str(rendered).context("updated pack manifest would not parse")?;
+    let mapping = get_mapping(&rendered_yaml)?;
+    let actual_file_count = mapping
+        .get(Value::String("files".to_owned()))
+        .and_then(Value::as_sequence)
+        .map_or(0, Vec::len);
+    if actual_file_count != expected_file_count {
+        bail!(
+            "updated pack manifest would contain {actual_file_count} files, expected {expected_file_count}"
+        );
+    }
+    let actual_max_writes = mapping
+        .get(Value::String("safety".to_owned()))
+        .and_then(Value::as_mapping)
+        .and_then(|safety| safety.get(Value::String("max_writes".to_owned())))
+        .and_then(Value::as_u64)
+        .context("updated pack manifest would not contain safety.max_writes")?;
+    if actual_max_writes != u64::from(expected_max_writes) {
+        bail!(
+            "updated pack manifest would set safety.max_writes to {actual_max_writes}, expected {expected_max_writes}"
+        );
+    }
+    Ok(())
+}
+
+fn dominant_line_ending(text: &str) -> &str {
+    if text.contains("\r\n") { "\r\n" } else { "\n" }
+}
+
+fn normalize_line_endings(text: &str, eol: &str) -> String {
+    if eol == "\n" {
+        text.replace("\r\n", "\n")
+    } else {
+        text.replace("\r\n", "\n").replace('\n', "\r\n")
+    }
+}
+
+fn split_lines(text: &str) -> Vec<String> {
+    text.split_inclusive('\n').map(str::to_owned).collect()
+}
+
+fn ensure_trailing_newline(text: &str) -> String {
+    let mut out = text.to_owned();
+    if !out.is_empty() && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
+fn is_top_level_key(line: &str, key: &str) -> bool {
+    line.strip_prefix(&format!("{key}:")).is_some()
+}
+
+fn find_next_top_level_key(lines: &[String], start: usize) -> Option<usize> {
+    lines
+        .iter()
+        .enumerate()
+        .skip(start)
+        .find(|(_, line)| {
+            !line.trim().is_empty()
+                && !line.starts_with(char::is_whitespace)
+                && !line.trim_start().starts_with('#')
+                && !line.starts_with('-')
+                && line.contains(':')
+        })
+        .map(|(index, _)| index)
 }
 
 fn count_non_file_writes(manifest: &Mapping) -> usize {
@@ -383,12 +530,6 @@ fn count_non_file_writes(manifest: &Mapping) -> usize {
 fn get_mapping(value: &Value) -> Result<&Mapping> {
     value
         .as_mapping()
-        .context("pack manifest must be a YAML mapping")
-}
-
-fn get_mapping_mut(value: &mut Value) -> Result<&mut Mapping> {
-    value
-        .as_mapping_mut()
         .context("pack manifest must be a YAML mapping")
 }
 

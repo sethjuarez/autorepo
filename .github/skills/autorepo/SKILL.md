@@ -134,7 +134,7 @@ Use repeated `--include` globs to keep the starter intentional. Use repeated `--
 
 `--with-issues` adds a single review issue stub. `--with-warmup` adds a repo app link and review app-session prompt. Keep rich labels, milestones, pull requests, workflow dispatches, issue migration, automation schedules, binary assets, and session snapshots manual unless the pack author intentionally adds them after reviewing the generated pack.
 
-`autorepo pack update` is the refresh path for the demo loop. It keeps curated manifest sections and non-file templates, refreshes only `templates/files/**`, replaces manifest `files`, recalculates `safety.max_writes`, and validates the pack. Metadata flags like `--id`, `--name`, and `--description` require `--replace` when updating an existing pack. `autorepo pack publish` wraps `pack update` with target-repository clone/branch/commit/push/optional-PR primitives so pack catalogs can receive community-style contributions by branch and pull request.
+`autorepo pack update` is the refresh path for the demo loop. It keeps curated manifest sections, comments outside generated fields, and non-file templates, refreshes only `templates/files/**`, surgically replaces manifest `files`, recalculates `safety.max_writes`, and validates the pack. Metadata flags like `--id`, `--name`, and `--description` require `--replace` when updating an existing pack. `autorepo pack publish` wraps `pack update` with target-repository clone/branch/commit/push/optional-PR primitives so pack catalogs can receive community-style contributions by branch and pull request.
 
 ## Safety rules
 
