@@ -91,7 +91,8 @@ pub fn publish(options: PackPublishOptions) -> Result<()> {
     let checkout = temp_checkout.path().join("repo");
     verify_origin_matches(&checkout, &options.target_repo)?;
 
-    checkout_publish_branch(&checkout, &options.branch, options.base.as_deref())?;
+    let publish_branch_existed =
+        checkout_publish_branch(&checkout, &options.branch, options.base.as_deref())?;
 
     let target_pack = checkout.join(&options.target_path);
     let existing_pack = target_pack.exists() && !is_empty_dir(&target_pack)?;
@@ -121,6 +122,9 @@ pub fn publish(options: PackPublishOptions) -> Result<()> {
             options.target_repo.name,
             options.target_path.display()
         );
+        if options.pr && publish_branch_existed {
+            open_or_reuse_pr(&options)?;
+        }
         return Ok(());
     }
 
@@ -607,11 +611,12 @@ fn target_clone_url(options: &PackPublishOptions) -> Result<String> {
     })
 }
 
-fn checkout_publish_branch(checkout: &Path, branch: &str, base: Option<&str>) -> Result<()> {
+fn checkout_publish_branch(checkout: &Path, branch: &str, base: Option<&str>) -> Result<bool> {
     git(checkout, ["fetch", "origin"])?;
     let remote_branch = format!("origin/{branch}");
     if ref_exists(checkout, &remote_branch) {
         git(checkout, ["checkout", "-B", branch, &remote_branch])?;
+        return Ok(true);
     } else if let Some(base) = base {
         git(checkout, ["fetch", "origin", base])?;
         git(
@@ -631,7 +636,7 @@ fn checkout_publish_branch(checkout: &Path, branch: &str, base: Option<&str>) ->
     } else {
         git(checkout, ["checkout", "-B", branch])?;
     }
-    Ok(())
+    Ok(false)
 }
 
 fn ref_exists(checkout: &Path, name: &str) -> bool {
