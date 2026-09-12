@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and release-please.
 
+## [0.9.0](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.8.0...autorepo-v0.9.0) (2026-09-12)
+
+
+### Features
+
+* add pack-from extraction command ([7f6b81a](https://github.com/sethjuarez/autorepo/commit/7f6b81a60fcd915a36f6590294a0622edf8eece9))
+
 ## [0.8.0](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.7.0...autorepo-v0.8.0) (2026-09-11)
 
 
