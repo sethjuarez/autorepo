@@ -1832,11 +1832,16 @@ fn github_cli_token() -> Option<(&'static str, String)> {
         .map(|token| ("GitHub CLI", token))
 }
 
+#[cfg(windows)]
 fn gh_command() -> Command {
     let mut command = Command::new("gh");
-    #[cfg(windows)]
     command.creation_flags(CREATE_NO_WINDOW);
     command
+}
+
+#[cfg(not(windows))]
+fn gh_command() -> Command {
+    Command::new("gh")
 }
 
 fn sanitize_pack_error(error: anyhow::Error) -> String {
