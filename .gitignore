@@ -1,3 +1,10 @@
 /target
 /.tmp
 /snapshots
+/.auditaur/session.json
+/node_modules
+/apps/desktop/node_modules
+/apps/desktop/dist
+/apps/desktop/tsconfig.tsbuildinfo
+*.tsbuildinfo
+/apps/desktop/src-tauri/target

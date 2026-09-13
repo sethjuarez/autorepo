@@ -1,0 +1,35 @@
+schema: 1
+id: test-starter
+name: Test starter
+description: Small fixture pack for exercising collection loading, pack selection, details, dry-run, and warmup flows.
+safety:
+  max_writes: 4
+labels:
+  - id: test
+    name: test
+    color: "0969da"
+    description: Test fixture work.
+milestones:
+  - id: test_ready
+    title: Test ready
+    description: Repository is ready for a small autorepo fixture run.
+files:
+  - id: readme
+    path: README.md
+    template: templates/README.md
+issues:
+  - id: verify_fixture
+    title: Verify the test starter fixture
+    template: templates/issues/verify-fixture.md
+    labels:
+      - test
+    milestone: test_ready
+warmup:
+  - id: fixture_notes
+    title: Fixture notes
+    kind: note
+    body: Use this pack to confirm collection loading, pack selection, and dry-run rendering without a large payload.
+  - id: fixture_checklist
+    title: Fixture checklist
+    kind: checklist
+    body: Confirm the selected pack shows 4 writes, 2 warmups, and a safe dry-run before testing live writes.

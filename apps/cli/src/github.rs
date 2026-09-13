@@ -1,4 +1,4 @@
-use std::{process::Command, time::Duration};
+use std::{io::Write, process::Command, time::Duration};
 
 use anyhow::{Context, Result, bail};
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -58,6 +58,75 @@ impl LiveGitHubClient {
         })
     }
 
+    pub async fn ensure_repository(&self, repo: &RepoRef) -> Result<()> {
+        if self.repository(repo).await?.is_some() {
+            return Ok(());
+        }
+
+        let authenticated_user: GithubUserResponse = self
+            .send_url(Method::GET, "https://api.github.com/user", None)
+            .await?;
+        let body = json!({
+            "name": repo.name,
+            "private": true,
+            "has_issues": true,
+            "has_projects": true,
+            "has_wiki": false,
+        });
+        if authenticated_user.login.eq_ignore_ascii_case(&repo.owner) {
+            let _: RepoResponse = self
+                .send_url(
+                    Method::POST,
+                    "https://api.github.com/user/repos",
+                    Some(body),
+                )
+                .await?;
+        } else {
+            let url = format!("https://api.github.com/orgs/{}/repos", repo.owner);
+            let _: RepoResponse = self.send_url(Method::POST, &url, Some(body)).await?;
+        }
+        output_line(format!("create repository {}/{}", repo.owner, repo.name));
+        Ok(())
+    }
+
+    pub async fn recreate_repository(&self, repo: &RepoRef) -> Result<()> {
+        if self.repository(repo).await?.is_some() {
+            self.delete_repository(repo).await?;
+            output_line(format!("delete repository {}/{}", repo.owner, repo.name));
+            self.wait_for_repository_deleted(repo).await?;
+        }
+        self.ensure_repository(repo).await
+    }
+
+    async fn repository(&self, repo: &RepoRef) -> Result<Option<RepoResponse>> {
+        self.get_optional(repo, "").await
+    }
+
+    async fn delete_repository(&self, repo: &RepoRef) -> Result<()> {
+        self.send_empty(Method::DELETE, repo, "", None)
+            .await
+            .with_context(|| {
+                format!(
+                    "repository {}/{} cannot be deleted; Exact hydrate requires repository admin/delete permission",
+                    repo.owner, repo.name
+                )
+            })
+    }
+
+    async fn wait_for_repository_deleted(&self, repo: &RepoRef) -> Result<()> {
+        for _ in 0..10 {
+            if self.repository(repo).await?.is_none() {
+                return Ok(());
+            }
+            sleep(Duration::from_secs(1)).await;
+        }
+        bail!(
+            "repository {}/{} was deleted but is still visible to GitHub",
+            repo.owner,
+            repo.name
+        )
+    }
+
     pub async fn repo_is_empty(&self, repo: &RepoRef) -> Result<bool> {
         let branches: Vec<BranchRef> = self
             .send(Method::GET, repo, "branches?per_page=1", None)
@@ -78,7 +147,7 @@ impl LiveGitHubClient {
             .await?
             .is_some()
         {
-            println!("skip label {name}");
+            output_line(format!("skip label {name}"));
             return Ok(());
         }
 
@@ -89,7 +158,7 @@ impl LiveGitHubClient {
         });
         self.send_empty(Method::POST, repo, "labels", Some(body))
             .await?;
-        println!("create label {name}");
+        output_line(format!("create label {name}"));
         Ok(())
     }
 
@@ -100,7 +169,7 @@ impl LiveGitHubClient {
         description: Option<&str>,
     ) -> Result<u64> {
         if let Some(existing) = self.find_milestone(repo, title).await? {
-            println!("skip milestone {title}");
+            output_line(format!("skip milestone {title}"));
             return Ok(existing.number);
         }
 
@@ -111,7 +180,7 @@ impl LiveGitHubClient {
         let created: MilestoneResponse = self
             .send(Method::POST, repo, "milestones", Some(body))
             .await?;
-        println!("create milestone {title}");
+        output_line(format!("create milestone {title}"));
         Ok(created.number)
     }
 
@@ -130,7 +199,7 @@ impl LiveGitHubClient {
         {
             let decoded = decode_content(&existing.content)?;
             if decoded.contains(marker) {
-                println!("skip file {path}");
+                output_line(format!("skip file {path}"));
                 return Ok(());
             }
             bail!("file '{path}' already exists without autorepo marker");
@@ -150,7 +219,7 @@ impl LiveGitHubClient {
             Some(body),
         )
         .await?;
-        println!("create file {path}");
+        output_line(format!("create file {path}"));
         Ok(())
     }
 
@@ -170,7 +239,7 @@ impl LiveGitHubClient {
             {
                 let decoded = decode_content(&existing.content)?;
                 if decoded.contains(marker) {
-                    println!("skip branch {name}");
+                    output_line(format!("skip branch {name}"));
                     return Ok(());
                 }
             }
@@ -193,7 +262,7 @@ impl LiveGitHubClient {
         let content = format!("{marker}\n\nThis branch was created by autorepo.\n");
         self.ensure_file(repo, &marker_path, &content, marker, Some(name))
             .await?;
-        println!("create branch {name}");
+        output_line(format!("create branch {name}"));
         Ok(())
     }
 
@@ -207,7 +276,7 @@ impl LiveGitHubClient {
         milestone: Option<u64>,
     ) -> Result<u64> {
         if let Some(existing) = self.find_marked_issue(repo, marker).await? {
-            println!("skip issue {title}");
+            output_line(format!("skip issue {title}"));
             return Ok(existing.number);
         }
         if self.find_unmarked_issue_title(repo, title).await?.is_some() {
@@ -226,7 +295,7 @@ impl LiveGitHubClient {
         let created: IssueResponse = self
             .send(Method::POST, repo, "issues", Some(request))
             .await?;
-        println!("create issue {title}");
+        output_line(format!("create issue {title}"));
         Ok(created.number)
     }
 
@@ -240,7 +309,7 @@ impl LiveGitHubClient {
         labels: &[String],
     ) -> Result<u64> {
         if let Some(existing) = self.find_marked_pr(repo, marker).await? {
-            println!("skip pull_request {title}");
+            output_line(format!("skip pull_request {title}"));
             return Ok(existing.number);
         }
         if self.find_unmarked_pr_title(repo, title).await?.is_some() {
@@ -260,7 +329,7 @@ impl LiveGitHubClient {
         if !labels.is_empty() {
             self.add_issue_labels(repo, created.number, labels).await?;
         }
-        println!("create pull_request {title}");
+        output_line(format!("create pull_request {title}"));
         Ok(created.number)
     }
 
@@ -386,9 +455,18 @@ impl LiveGitHubClient {
         body: Option<Value>,
     ) -> Result<T> {
         let url = repo_url(repo, path);
+        self.send_url(method, &url, body).await
+    }
+
+    async fn send_url<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        url: &str,
+        body: Option<Value>,
+    ) -> Result<T> {
         let mut attempt = 0;
         loop {
-            let mut request = self.request(method.clone(), &url);
+            let mut request = self.request(method.clone(), url);
             if let Some(body) = &body {
                 request = request.json(body);
             }
@@ -407,7 +485,7 @@ impl LiveGitHubClient {
                 continue;
             }
 
-            return parse_response(response, &url).await;
+            return parse_response(response, url).await;
         }
     }
 
@@ -483,6 +561,10 @@ fn marked_body(body: &str, marker: &str) -> String {
     }
 }
 
+pub fn output_line(message: impl AsRef<str>) {
+    let _ = writeln!(std::io::stdout(), "{}", message.as_ref());
+}
+
 fn branch_marker_path(id: &str) -> String {
     format!(".autorepo/branches/{id}.md")
 }
@@ -490,6 +572,11 @@ fn branch_marker_path(id: &str) -> String {
 #[derive(Debug, Deserialize)]
 struct RepoResponse {
     default_branch: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubUserResponse {
+    login: String,
 }
 
 #[derive(Debug, Deserialize)]

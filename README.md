@@ -38,8 +38,37 @@ cargo install autorepo
 From a checkout:
 
 ```powershell
-cargo install --path .
+cargo install --path .\apps\cli
 ```
+
+## Repository layout
+
+`autorepo` is moving toward a small monorepo so the CLI can stay releasable while a desktop UI driver grows beside it.
+
+```text
+apps\
+  cli\                 # published autorepo CLI and shared library crate
+  desktop\             # Tauri + React desktop shell
+crates\
+  autorepo-executor\   # safe execution boundary
+  autorepo-github\     # GitHub integration boundary
+  autorepo-observation\# local observation contracts
+packs\                 # built-in and testable pack content
+```
+
+The CLI remains the automation-first surface. The desktop app is the interactive driver for pack validation, deterministic plan preview, explicit confirmation, execution progress, and local-first observation via Auditaur-oriented event contracts.
+
+## Desktop app
+
+The desktop shell lives in `apps\desktop` and uses Tauri 2, React, and Primer React/Product UI conventions. It uses a frameless Tauri window with app-owned GitHub-style chrome, Lucide header icons, and Primer light/dark schemes.
+
+```powershell
+npm install
+npm run dev
+npm run build
+```
+
+The first shell is intentionally read-only: it establishes Primer theming, Tauri command wiring, pack validation, release-lane visibility, and the shared observation vocabulary before write execution is exposed in the UI. The Validate pack panel loads the built-in pack or a local pack path through the `autorepo` library, returning manifest counts and validation errors from the same core logic the CLI uses. Settings currently check local GitHub CLI authentication and provide a copyable `gh auth login --hostname github.com --web --scopes repo` command; the app does not start OAuth or submit credentials for the user.
 
 ## Quick start
 

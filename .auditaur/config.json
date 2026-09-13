@@ -1,0 +1,9 @@
+{
+  "app": "autorepo",
+  "start": ["npm", "--workspace", "apps/desktop", "run", "tauri", "--", "dev"],
+  "readiness": {
+    "frontend": true,
+    "driveBridge": true,
+    "timeoutSeconds": 180
+  }
+}

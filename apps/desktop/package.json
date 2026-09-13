@@ -1,0 +1,28 @@
+{
+  "name": "@autorepo/desktop",
+  "private": true,
+  "version": "0.10.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 17420",
+    "build": "tsc && vite build",
+    "test": "tsc --noEmit",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@auditaur/api": "^0.6.0",
+    "@primer/octicons-react": "^19.15.5",
+    "@primer/primitives": "^10.1.1",
+    "@primer/react": "^37.21.0",
+    "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-dialog": "^2.7.3",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.0"
+  }
+}

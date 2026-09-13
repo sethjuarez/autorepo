@@ -1,18 +1,14 @@
 use anyhow::Result;
 
 mod cli;
-mod doctor;
 mod executor;
-mod github;
 mod labs;
-mod markers;
-mod ops;
-mod pack;
 mod pack_publish;
 mod pack_scaffold;
-mod planner;
 mod render;
 mod warm;
+
+pub use autorepo::{doctor, github, markers, ops, pack, planner};
 
 #[tokio::main]
 async fn main() -> Result<()> {

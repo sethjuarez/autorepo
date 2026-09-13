@@ -1,0 +1,11 @@
+[package]
+name = "autorepo-github"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "GitHub integration boundary for autorepo."
+publish = false
+
+[dependencies]
+anyhow = { workspace = true }
