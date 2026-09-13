@@ -23,7 +23,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Cargo publish dry-run
         if: inputs.publish == false
-        run: cargo publish --dry-run
+        run: cargo publish -p autorepo --dry-run
 
   publish:
     name: Cargo publish
@@ -44,4 +44,4 @@ jobs:
             exit 1
           fi
 
-          cargo publish
+          cargo publish -p autorepo

@@ -649,12 +649,17 @@ mod tests {
     use super::Pack;
 
     #[test]
-    fn validates_builtin_pack() {
-        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("packs")
-            .join("generic-starter");
-        let pack = Pack::load(root).unwrap();
-        pack.validate().unwrap();
+    fn validates_checked_in_packs() {
+        let packs_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packs");
+        for entry in fs::read_dir(packs_root).unwrap() {
+            let root = entry.unwrap().path();
+            if !root.is_dir() {
+                continue;
+            }
+
+            let pack = Pack::load(root).unwrap();
+            pack.validate().unwrap();
+        }
     }
 
     #[test]

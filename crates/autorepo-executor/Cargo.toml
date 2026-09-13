@@ -1,0 +1,12 @@
+[package]
+name = "autorepo-executor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Safe execution boundary for autorepo plans."
+publish = false
+
+[dependencies]
+anyhow = { workspace = true }
+autorepo = { path = "../../apps/cli" }

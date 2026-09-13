@@ -1,0 +1,12 @@
+[package]
+name = "autorepo-observation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Local-first observation event contracts for autorepo."
+publish = false
+
+[dependencies]
+autorepo = { path = "../../apps/cli" }
+serde = { workspace = true }
