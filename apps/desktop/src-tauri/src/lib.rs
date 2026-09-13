@@ -333,6 +333,10 @@ async fn execute_pack_dry_run(
 }
 
 #[tauri_plugin_auditaur::auditaur_command(skip_all, err)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Tauri command parameters mirror the frontend IPC payload"
+)]
 async fn execute_pack_hydrate(
     app: AppHandle,
     pack_source: String,
@@ -573,9 +577,9 @@ fn list_repo_packs_blocking(
     let repo_root = repo_source.path();
     let mut packs = Vec::new();
 
-    for pack_root in discover_pack_roots(&repo_root)? {
+    for pack_root in discover_pack_roots(repo_root)? {
         let location = pack_root
-            .strip_prefix(&repo_root)
+            .strip_prefix(repo_root)
             .ok()
             .and_then(|path| path.to_str())
             .filter(|value| !value.is_empty())
@@ -1381,12 +1385,11 @@ fn search_github_repositories_blocking(
         }
     }
 
-    if let Some(exact_repo) = exact_owner_repo_candidate(owner, query) {
-        if !repositories.iter().any(|repo| repo.full_name == exact_repo) {
-            if let Some(repository) = github_repository(&token, &exact_repo)? {
-                repositories.insert(0, repository);
-            }
-        }
+    if let Some(exact_repo) = exact_owner_repo_candidate(owner, query)
+        && !repositories.iter().any(|repo| repo.full_name == exact_repo)
+        && let Some(repository) = github_repository(&token, &exact_repo)?
+    {
+        repositories.insert(0, repository);
     }
 
     Ok(repositories

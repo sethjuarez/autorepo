@@ -33,6 +33,7 @@ pub struct ExecutionProgress {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepositoryHydrationMode {
     PreserveExisting,
+    #[allow(dead_code)]
     ExactReset,
 }
 

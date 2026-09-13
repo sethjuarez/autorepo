@@ -466,7 +466,7 @@ impl LiveGitHubClient {
     ) -> Result<T> {
         let mut attempt = 0;
         loop {
-            let mut request = self.request(method.clone(), &url);
+            let mut request = self.request(method.clone(), url);
             if let Some(body) = &body {
                 request = request.json(body);
             }
@@ -485,7 +485,7 @@ impl LiveGitHubClient {
                 continue;
             }
 
-            return parse_response(response, &url).await;
+            return parse_response(response, url).await;
         }
     }
 
