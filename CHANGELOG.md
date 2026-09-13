@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) and release-please.
 
+## [0.11.0](https://github.com/sethjuarez/autorepo/compare/v0.10.0...v0.11.0) (2026-09-13)
+
+
+### Features
+
+* add Copilot app warmup targets ([#13](https://github.com/sethjuarez/autorepo/issues/13)) ([3e0c538](https://github.com/sethjuarez/autorepo/commit/3e0c53820ef513f95e8e61031eee8f3f59414927))
+* add experimental session snapshots ([#17](https://github.com/sethjuarez/autorepo/issues/17)) ([b96e591](https://github.com/sethjuarez/autorepo/commit/b96e591f1b2ee518d9d30038b0f25057ef13ef1c))
+* add live github test runners ([58a113b](https://github.com/sethjuarez/autorepo/commit/58a113b1c2d86dd6ee6e402e3bd2b216fa08940d))
+* add pack publish workflow ([79e95c5](https://github.com/sethjuarez/autorepo/commit/79e95c5e8161793e1cfc7329dfa24d9c9ecff378))
+* add pack-from extraction command ([7f6b81a](https://github.com/sethjuarez/autorepo/commit/7f6b81a60fcd915a36f6590294a0622edf8eece9))
+* add pack-from extraction command ([458b9a7](https://github.com/sethjuarez/autorepo/commit/458b9a70133c24544513b12f036e18204793a544))
+* hydrate generic starter pack ([2037706](https://github.com/sethjuarez/autorepo/commit/20377062c2336bc287c27b9e39fa0c497ac18642))
+* improve crate readme ([1b4bed1](https://github.com/sethjuarez/autorepo/commit/1b4bed16e17dae513f6b2dceee3103e3da281ec0))
+* load packs from GitHub sources ([#15](https://github.com/sethjuarez/autorepo/issues/15)) ([159fbbc](https://github.com/sethjuarez/autorepo/commit/159fbbc7d010a113db77b1aa19a819db603cfe42))
+* scaffold autorepo rust cli ([1e3f2b6](https://github.com/sethjuarez/autorepo/commit/1e3f2b657190cb2c15f11a35c143db544c2af473))
+
+
+### Bug Fixes
+
+* harden pack publish workflow ([3a89df7](https://github.com/sethjuarez/autorepo/commit/3a89df72f7ba465d72d517b2711143d759ca1b3a))
+* open pack publish PR for unchanged branches ([8e2fbb1](https://github.com/sethjuarez/autorepo/commit/8e2fbb180c8570b6eb11d1cbf5aa0e619cb49b57))
+* preserve pack manifest comments on update ([1ad4c87](https://github.com/sethjuarez/autorepo/commit/1ad4c875951e6c78743a28ffef4db63630fbdf37))
+* skip ci for release metadata prs ([c7a0f41](https://github.com/sethjuarez/autorepo/commit/c7a0f41b72a3009694c7cfda51eea1f56ac647f5))
+* use release token for release-please prs ([4a26712](https://github.com/sethjuarez/autorepo/commit/4a26712d5381ce59eb04d898f8b350a9a9e490ed))
+
 ## [0.10.0](https://github.com/sethjuarez/autorepo/compare/autorepo-v0.9.0...autorepo-v0.10.0) (2026-09-12)
 
 
