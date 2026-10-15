@@ -61,6 +61,7 @@ export function PlanPreviewPanel({
   const [hydrateError, setHydrateError] = React.useState<string | null>(null)
   const [hydrateConfirming, setHydrateConfirming] = React.useState(false)
   const [hydrateProgress, setHydrateProgress] = React.useState<Record<number, OperationProgressState>>({})
+  const [repositorySetupTarget, setRepositorySetupTarget] = React.useState(REPOSITORY_SETUP_PROGRESS_TARGET)
   const hydrateRunIdRef = React.useRef<string | null>(null)
   const [operationScope, setOperationScope] = React.useState<'writes' | 'warmups'>('writes')
   const [previewOperation, setPreviewOperation] = React.useState<PlanOperationPreview | null>(null)
@@ -81,6 +82,7 @@ export function PlanPreviewPanel({
     setReconciliation(null)
     setReconciliationError(null)
     setHydrateProgress({})
+    setRepositorySetupTarget(REPOSITORY_SETUP_PROGRESS_TARGET)
     hydrateRunIdRef.current = null
     invoke<PackPlanPreview>('preview_pack_plan', {packSource, repoSource, repo, allowNonEmpty})
       .then(result => {
@@ -151,19 +153,25 @@ export function PlanPreviewPanel({
 
   React.useEffect(() => {
     let unlisten: (() => void) | null = null
+    let disposed = false
     void listen<PackHydrateProgress>('pack-hydrate-progress', event => {
       const progress = event.payload
       if (progress.runId !== hydrateRunIdRef.current) return
+      if (progress.index === REPOSITORY_SETUP_PROGRESS_INDEX) setRepositorySetupTarget(progress.target)
       setHydrateProgress(current => ({
         ...current,
-        [REPOSITORY_SETUP_PROGRESS_INDEX]: 'done',
         [progress.index]: hydrateProgressStatus(progress.status),
       }))
     }).then(cleanup => {
+      if (disposed) {
+        cleanup()
+        return
+      }
       unlisten = cleanup
     })
 
     return () => {
+      disposed = true
       unlisten?.()
     }
   }, [])
@@ -239,6 +247,7 @@ export function PlanPreviewPanel({
     setHydrateError(null)
     setHydrateReport(null)
     setHydrateProgress(pendingWriteProgress(preview.operations))
+    setRepositorySetupTarget(REPOSITORY_SETUP_PROGRESS_TARGET)
     setDryRunError(null)
     setPreviewOperation(null)
     const runId = newHydrateRunId()
@@ -292,25 +301,25 @@ export function PlanPreviewPanel({
     const totalSteps = writeOperations.length + 1
     const processedSteps = (repositorySetupProcessed ? 1 : 0) + processedWrites
     const runningOperation = repositorySetupState === 'running'
-      ? {target: REPOSITORY_SETUP_PROGRESS_TARGET}
+      ? {target: repositorySetupTarget}
       : writeOperations.find(operation => hydrateProgress[operation.index] === 'running') ?? null
     return {
       processedSteps: hydrated ? totalSteps : processedSteps,
       totalSteps,
       runningOperation,
     }
-  }, [hydrateProgress, hydrated, writeOperations])
+  }, [hydrateProgress, hydrated, repositorySetupTarget, writeOperations])
   const hydrateProgressPercent = hydrateWriteProgress.totalSteps > 0
     ? Math.round((hydrateWriteProgress.processedSteps / hydrateWriteProgress.totalSteps) * 100)
     : 0
   const hydrateProgressTitle = hydrateError ? 'Hydrate failed' : hydrated ? 'Hydrate complete' : 'Hydrating repository'
-  const hydrateProgressDetail = hydrateWriteProgress.runningOperation
-    ? `Current: ${hydrateWriteProgress.runningOperation.target}`
-    : hydrated
+  const hydrateProgressDetail = hydrateError
+    ? 'Stopped before completing all writes.'
+    : hydrateWriteProgress.runningOperation
+      ? `Current: ${hydrateWriteProgress.runningOperation.target}`
+      : hydrated
       ? 'All GitHub writes completed.'
-      : hydrateError
-        ? 'Stopped before completing all writes.'
-        : 'Starting hydrate... Creating or checking the repository before the first write can take a moment.'
+      : 'Starting hydrate... Creating or checking the repository before the first write can take a moment.'
   const exactHydrateUnavailable = Boolean(targetStatus?.exists && !targetStatus.canExactHydrate)
   React.useEffect(() => {
     if (exactHydrateUnavailable && hydrateMode === 'exact') setHydrateMode('existing')

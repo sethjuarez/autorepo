@@ -258,7 +258,7 @@ impl LiveGitHubClient {
         }
     }
 
-    async fn delete_repository(&self, repo: &RepoRef) -> Result<()> {
+    pub async fn delete_repository(&self, repo: &RepoRef) -> Result<()> {
         self.send_empty(Method::DELETE, repo, "", None)
             .await
             .with_context(|| {
@@ -288,7 +288,7 @@ impl LiveGitHubClient {
         }
     }
 
-    async fn wait_for_repository_deleted(&self, repo: &RepoRef) -> Result<()> {
+    pub async fn wait_for_repository_deleted(&self, repo: &RepoRef) -> Result<()> {
         for _ in 0..10 {
             if self.repository(repo).await?.is_none() {
                 return Ok(());

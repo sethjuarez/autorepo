@@ -65,14 +65,87 @@ impl Executor {
     {
         let repo = RepoRef::parse(&plan.repo)?;
         let github = LiveGitHubClient::from_env()?;
-        match repository_mode {
-            RepositoryHydrationMode::PreserveExisting => github.ensure_repository(&repo).await?,
-            RepositoryHydrationMode::ExactReset => github.recreate_repository(&repo).await?,
+        let setup_total = plan.operations.len() + 1;
+        let mut setup_target = "Repository setup";
+        let setup_result = async {
+            match repository_mode {
+                RepositoryHydrationMode::PreserveExisting => {
+                    setup_target = "Create or verify repository";
+                    progress(repository_setup_progress(
+                        setup_total,
+                        "repository.setup.verify",
+                        setup_target,
+                        ExecutionProgressStatus::Started,
+                    ));
+                    github.ensure_repository(&repo).await?;
+                }
+                RepositoryHydrationMode::ExactReset => {
+                    if github.repository_exists(&repo).await? {
+                        setup_target = "Delete existing repository";
+                        progress(repository_setup_progress(
+                            setup_total,
+                            "repository.setup.delete",
+                            setup_target,
+                            ExecutionProgressStatus::Started,
+                        ));
+                        github.delete_repository(&repo).await?;
+
+                        setup_target = "Wait for repository deletion";
+                        progress(repository_setup_progress(
+                            setup_total,
+                            "repository.setup.wait_for_delete",
+                            setup_target,
+                            ExecutionProgressStatus::Started,
+                        ));
+                        github.wait_for_repository_deleted(&repo).await?;
+                    }
+
+                    setup_target = "Recreate repository";
+                    progress(repository_setup_progress(
+                        setup_total,
+                        "repository.setup.recreate",
+                        setup_target,
+                        ExecutionProgressStatus::Started,
+                    ));
+                    github.ensure_repository(&repo).await?;
+                }
+            }
+
+            setup_target = "Verify repository contents";
+            progress(repository_setup_progress(
+                setup_total,
+                "repository.setup.verify_contents",
+                setup_target,
+                ExecutionProgressStatus::Started,
+            ));
+            doctor::ensure_empty_repo(github.repo_is_empty(&repo).await?, plan.allow_non_empty)?;
+
+            Ok::<(), anyhow::Error>(())
         }
-        doctor::ensure_empty_repo(github.repo_is_empty(&repo).await?, plan.allow_non_empty)?;
+        .await;
+
+        match setup_result {
+            Ok(()) => {
+                progress(repository_setup_progress(
+                    setup_total,
+                    "repository.setup.ready",
+                    "Repository ready",
+                    ExecutionProgressStatus::Completed,
+                ));
+            }
+            Err(error) => {
+                progress(repository_setup_progress(
+                    setup_total,
+                    "repository.setup.failed",
+                    setup_target,
+                    ExecutionProgressStatus::Failed,
+                ));
+                return Err(error);
+            }
+        }
 
         let mut milestones = HashMap::new();
-        let total = plan.operations.len();
+        let total = setup_total;
 
         for (offset, operation) in plan.operations.iter().enumerate() {
             let index = offset + 1;
@@ -191,6 +264,22 @@ impl Executor {
         }
 
         Ok(())
+    }
+}
+
+fn repository_setup_progress(
+    total: usize,
+    id: &'static str,
+    target: &'static str,
+    status: ExecutionProgressStatus,
+) -> ExecutionProgress {
+    ExecutionProgress {
+        index: 0,
+        total,
+        id: id.to_owned(),
+        kind: "Repository setup",
+        target: target.to_owned(),
+        status,
     }
 }
 

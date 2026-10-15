@@ -1,6 +1,6 @@
 import type {OperationProgressState, PackHydrateProgress, PlanOperationPreview} from './types'
 
-export const REPOSITORY_SETUP_PROGRESS_INDEX = -1
+export const REPOSITORY_SETUP_PROGRESS_INDEX = 0
 export const REPOSITORY_SETUP_PROGRESS_TARGET = 'Create or verify repository'
 
 export function hydrateProgressStatus(status: PackHydrateProgress['status']): OperationProgressState {
@@ -25,6 +25,7 @@ export function completeRemainingProgress(
   current: Record<number, OperationProgressState>,
 ) {
   const progress: Record<number, OperationProgressState> = {
+    ...current,
     [REPOSITORY_SETUP_PROGRESS_INDEX]: 'done',
   }
   for (const operation of operations) {
