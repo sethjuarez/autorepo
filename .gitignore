@@ -2,6 +2,7 @@
 /.tmp
 /snapshots
 /.auditaur/session.json
+/.auditaur/*-drill-report.json
 /node_modules
 /apps/desktop/node_modules
 /apps/desktop/dist

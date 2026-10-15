@@ -1,9 +1,17 @@
 {
   "app": "autorepo",
-  "start": ["npm", "--workspace", "apps/desktop", "run", "tauri", "--", "dev"],
+  "start": "npm --workspace apps/desktop run tauri -- dev",
   "readiness": {
     "frontend": true,
     "driveBridge": true,
     "timeoutSeconds": 180
+  },
+  "defaultDrill": "home-smoke",
+  "drills": {
+    "home-smoke": {
+      "owned": true,
+      "selector": ".home-workbench",
+      "expectText": "Open a pack collection"
+    }
   }
 }
