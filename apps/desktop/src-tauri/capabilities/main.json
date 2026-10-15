@@ -11,6 +11,9 @@
     "core:window:allow-start-dragging",
     "core:window:allow-toggle-maximize",
     "dialog:allow-open",
+    "process:allow-restart",
+    "updater:allow-check",
+    "updater:allow-download-and-install",
     "auditaur:default"
   ]
 }

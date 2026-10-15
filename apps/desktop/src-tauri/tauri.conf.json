@@ -34,6 +34,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/icon.ico",
@@ -41,6 +42,17 @@
     ],
     "resources": {
       "../../cli/packs/generic-starter": "packs/generic-starter"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVEODczQUNGNDBDNEQ1QTAKUldTZzFjUkF6enFIWFlSMUVmb2c4K29rR2lNWlgydFFKdVNybHcvbktBTlJNZWRvYmlmR29mMU4K",
+      "endpoints": [
+        "https://github.com/sethjuarez/autorepo/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

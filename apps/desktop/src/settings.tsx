@@ -1,7 +1,9 @@
 import {Box, Button, Heading, Label, Text, TextInput} from '@primer/react'
+import {relaunch} from '@tauri-apps/plugin-process'
+import {check, type Update} from '@tauri-apps/plugin-updater'
 import {CheckCircle, Github, KeyRound, Settings, ShieldCheck, TriangleAlert, X} from 'lucide-react'
 import React from 'react'
-import {invoke} from './app-runtime'
+import {hasTauriBridge, invoke} from './app-runtime'
 import {KeyIcon, ShieldCheckIcon} from './icons'
 import type {GithubAuthStatus} from './types'
 
@@ -55,6 +57,9 @@ function SettingsPanel({onStatusChange}: {onStatusChange: (status: GithubAuthSta
   const [status, setStatus] = React.useState<GithubAuthStatus | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [copied, setCopied] = React.useState(false)
+  const [updateStatus, setUpdateStatus] = React.useState<'idle' | 'checking' | 'available' | 'current' | 'installing' | 'installed' | 'error'>('idle')
+  const [updateMessage, setUpdateMessage] = React.useState('Check GitHub Releases for a signed desktop update.')
+  const [pendingUpdate, setPendingUpdate] = React.useState<Update | null>(null)
   const authCommand = 'gh auth login --hostname github.com --web --scopes repo'
 
   const refresh = React.useCallback(() => {
@@ -87,13 +92,68 @@ function SettingsPanel({onStatusChange}: {onStatusChange: (status: GithubAuthSta
     refresh()
   }, [refresh])
 
+  React.useEffect(() => () => {
+    if (pendingUpdate) void pendingUpdate.close().catch(() => undefined)
+  }, [pendingUpdate])
+
   const copyAuthCommand = async () => {
     await navigator.clipboard?.writeText(authCommand).catch(() => undefined)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1600)
   }
 
+  const checkForUpdate = React.useCallback(async () => {
+    if (!hasTauriBridge()) {
+      setUpdateStatus('error')
+      setUpdateMessage('Desktop updates are available only inside the packaged Tauri app.')
+      return
+    }
+    if (pendingUpdate) {
+      await pendingUpdate.close().catch(() => undefined)
+      setPendingUpdate(null)
+    }
+    setUpdateStatus('checking')
+    setUpdateMessage('Checking GitHub Releases...')
+    try {
+      const update = await check()
+      if (!update) {
+        setUpdateStatus('current')
+        setUpdateMessage('Autorepo is up to date.')
+        return
+      }
+
+      setPendingUpdate(update)
+      setUpdateStatus('available')
+      setUpdateMessage(`Version ${update.version} is available. Download and install it now?`)
+    } catch (cause: unknown) {
+      setUpdateStatus('error')
+      setUpdateMessage(cause instanceof Error ? cause.message : String(cause))
+    }
+  }, [pendingUpdate])
+
+  const installUpdate = React.useCallback(async () => {
+    if (!pendingUpdate) return
+    setUpdateStatus('installing')
+    setUpdateMessage('Downloading and installing the signed update...')
+    try {
+      await pendingUpdate.downloadAndInstall()
+      setPendingUpdate(null)
+      setUpdateStatus('installed')
+      setUpdateMessage('Update installed. Relaunch Autorepo to use the new version.')
+    } catch (cause: unknown) {
+      setUpdateStatus('error')
+      setUpdateMessage(cause instanceof Error ? cause.message : String(cause))
+    }
+  }, [pendingUpdate])
+
   const tone = status?.apiAuthenticated || status?.authenticated ? 'success' : status?.installed ? 'attention' : 'danger'
+  const updateTone = updateStatus === 'available' || updateStatus === 'installed'
+    ? 'success'
+    : updateStatus === 'error'
+      ? 'danger'
+      : updateStatus === 'current'
+        ? 'success'
+        : 'attention'
 
   return (
     <Box className="settings-panel">
@@ -190,6 +250,64 @@ function SettingsPanel({onStatusChange}: {onStatusChange: (status: GithubAuthSta
             <Button leadingVisual={ShieldCheckIcon} onClick={refresh} disabled={loading}>
               {loading ? 'Checking...' : 'Refresh status'}
             </Button>
+          </Box>
+        </Box>
+      </Box>
+
+      <Box sx={{border: '1px solid', borderColor: 'border.default', borderRadius: 2, p: 3, bg: 'canvas.subtle'}}>
+        <Box sx={{display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: 3}}>
+          <Box sx={{display: 'flex', gap: 2}}>
+            <Box className="settings-icon">
+              <ShieldCheck size={22} />
+            </Box>
+            <Box>
+              <Box as="h3" sx={{fontSize: 2, fontWeight: 600, m: 0, mb: 1}}>
+                Desktop updates
+              </Box>
+              <Text sx={{color: 'fg.muted'}}>
+                Autorepo checks signed GitHub Release artifacts and installs only updates that match the bundled public key.
+              </Text>
+            </Box>
+          </Box>
+          <Label variant={updateTone}>
+            {updateStatus === 'checking'
+              ? 'Checking'
+              : updateStatus === 'installing'
+                ? 'Installing'
+                : updateStatus === 'available'
+                  ? 'Available'
+                  : updateStatus === 'installed'
+                    ? 'Installed'
+                    : updateStatus === 'current'
+                      ? 'Current'
+                      : updateStatus === 'error'
+                        ? 'Action needed'
+                        : 'Manual'}
+          </Label>
+        </Box>
+        <Box sx={{display: 'grid', gap: 3, mt: 3}}>
+          <Box sx={{display: 'flex', alignItems: 'center', gap: 2}}>
+            {updateStatus === 'error' ? (
+              <TriangleAlert size={16} className="status-warning" />
+            ) : (
+              <CheckCircle size={16} className="status-success" />
+            )}
+            <Text sx={{fontSize: 1}}>{updateMessage}</Text>
+          </Box>
+          <Box sx={{display: 'flex', gap: 2}}>
+            <Button onClick={checkForUpdate} disabled={updateStatus === 'checking' || updateStatus === 'installing'}>
+              {updateStatus === 'checking' ? 'Checking...' : 'Check for updates'}
+            </Button>
+            {updateStatus === 'available' ? (
+              <Button variant="primary" onClick={installUpdate}>
+                Install update
+              </Button>
+            ) : null}
+            {updateStatus === 'installed' ? (
+              <Button variant="primary" onClick={() => void relaunch()}>
+                Relaunch
+              </Button>
+            ) : null}
           </Box>
         </Box>
       </Box>

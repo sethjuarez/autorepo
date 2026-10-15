@@ -5,15 +5,15 @@
 - the published `autorepo` CLI crate on crates.io
 - the desktop app bundles produced from `apps\desktop`
 
-Release Please owns version PRs and tags from the root manifest. The configuration updates the root package version, the root Cargo workspace version, the CLI crate version in `apps\cli\Cargo.toml`, the desktop package version, and Tauri's `Cargo.toml` and `tauri.conf.json` versions.
+Release Please owns version PRs, draft releases, and forced tag creation from the root manifest. The configuration updates the root package version, the root Cargo workspace version, the CLI crate version in `apps\cli\Cargo.toml`, the desktop package version, and Tauri's `Cargo.toml` and `tauri.conf.json` versions.
 
 ## Release Please
 
-`release-please.yml` runs on pushes to `main` and can also be dispatched manually. When Release Please creates a release, it dispatches `release.yml` for the created tag.
+`release-please.yml` runs on pushes to `main` and can also be dispatched manually. When Release Please creates a draft release, it dispatches `release.yml` for the created tag.
 
 This follows the CutReady-style split:
 
-- Release Please creates release PRs and tags.
+- Release Please creates release PRs, tags, and draft releases.
 - `release.yml` builds desktop platform artifacts from a tag.
 - `publish.yml` remains the explicit crates.io lane for the CLI crate.
 
@@ -38,10 +38,10 @@ Expected desktop release artifacts:
 
 | Matrix key | Runner | Target | Expected bundles |
 |---|---|---|---|
-| `linux-x64` | `ubuntu-24.04` | default Linux target | Linux bundles from Tauri `targets = "all"` such as `.deb`, `.rpm`, and `.AppImage`. |
-| `windows-x64` | `windows-latest` | default Windows target | Windows installer bundles such as `.msi` and NSIS `.exe`. |
-| `macos-silicon` | `macos-latest` | `aarch64-apple-darwin` | Apple Silicon macOS bundles such as `.dmg`; updater archives are not enabled yet. |
-| `macos-intel` | `macos-latest` | `x86_64-apple-darwin` | Intel macOS bundles such as `.dmg`; updater archives are not enabled yet. |
+| `linux-x64` | `ubuntu-24.04` | default Linux target | Linux bundles from Tauri `targets = "all"` such as `.deb`, `.rpm`, and `.AppImage`; self-update uses the signed AppImage artifact. |
+| `windows-x64` | `windows-latest` | default Windows target | Windows installer bundles such as `.msi` and NSIS `.exe`, plus `.sig` updater signatures. `latest.json` prefers NSIS, so the `.exe` installer is the self-updating Windows path. |
+| `macos-silicon` | `macos-latest` | `aarch64-apple-darwin` | Apple Silicon macOS bundles such as `.dmg`, plus `.app.tar.gz` and `.sig` updater artifacts. |
+| `macos-intel` | `macos-latest` | `x86_64-apple-darwin` | Intel macOS bundles such as `.dmg`, plus `.app.tar.gz` and `.sig` updater artifacts. |
 
 The Tauri action attaches bundle assets to the `v*` GitHub release created by the `resolve-tag` job. After a release run, verify the asset list includes all four matrix legs:
 
@@ -49,6 +49,12 @@ The Tauri action attaches bundle assets to the `v*` GitHub release created by th
 gh release view v0.10.0 --repo sethjuarez/autorepo
 gh release view v0.10.0 --repo sethjuarez/autorepo --json assets --jq '.assets[].name'
 ```
+
+The desktop app checks `https://github.com/sethjuarez/autorepo/releases/latest/download/latest.json` through the Tauri updater plugin. `tauri-action` uploads this file when updater artifacts are enabled. Keep `TAURI_SIGNING_PRIVATE_KEY` configured as a GitHub Actions secret; it must match the public key embedded in `apps\desktop\src-tauri\tauri.conf.json`. Do not rotate the key unless you are ready to ship a transitional build path because installed apps trust the bundled public key.
+
+`release.yml` checks out the release tag, keeps the GitHub release in draft while desktop assets are uploading, serializes the platform matrix so `latest.json` is updated without lost writes, and publishes the release only after every platform build succeeds. This keeps the public updater endpoint from pointing at an incomplete release.
+
+Do not rerun `release.yml` against an already-published release with assets. The workflow refuses to re-draft a live release because that would make the updater endpoint disappear for installed clients. Cut a new release or intentionally manage the release state before dispatching a rebuild.
 
 ## Versioning policy
 
@@ -74,7 +80,7 @@ If `Cargo.lock` changes, commit the refreshed lockfile to the release PR before 
 
 ## Local release smoke test
 
-Before dispatching `release.yml` or merging a release PR that affects desktop packaging, run the local confidence gates from a clean worktree. The Auditaur drill requires `auditaur` on `PATH` and writes transient session files under `.auditaur`.
+Before dispatching `release.yml` or merging a release PR that affects desktop packaging, run the local confidence gates from a clean worktree. The Auditaur drill requires `auditaur` on `PATH` and writes transient session files under `.auditaur`. The local Tauri build requires `TAURI_SIGNING_PRIVATE_KEY` or `TAURI_SIGNING_PRIVATE_KEY_PATH` because updater signatures are generated during packaging.
 
 ```powershell
 cargo fmt --all --check
