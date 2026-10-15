@@ -3,9 +3,11 @@ use std::{io::Write, process::Command, time::Duration};
 use anyhow::{Context, Result, bail};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use reqwest::{Method, StatusCode};
-use serde::{Deserialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use tokio::time::sleep;
+
+use crate::ops::Operation;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepoRef {
@@ -45,12 +47,40 @@ pub struct LiveGitHubClient {
     token: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OperationReconciliationStatus {
+    Missing,
+    PackOwned,
+    AlreadyPresent,
+    UserOwnedConflict,
+    LocalOnly,
+    Skipped,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationReconciliation {
+    pub status: OperationReconciliationStatus,
+    pub summary: String,
+    pub blocks_hydrate: bool,
+}
+
 impl LiveGitHubClient {
     pub fn from_env() -> Result<Self> {
-        let token = std::env::var("GH_TOKEN")
-            .or_else(|_| std::env::var("GITHUB_TOKEN"))
-            .or_else(|_| gh_auth_token())
-            .context("set GH_TOKEN/GITHUB_TOKEN or authenticate with gh before running --yes")?;
+        let token = ["AUTOREPO_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"]
+            .into_iter()
+            .find_map(|name| {
+                std::env::var(name)
+                    .ok()
+                    .map(|token| token.trim().to_owned())
+                    .filter(|token| !token.is_empty())
+            })
+            .map(Ok)
+            .unwrap_or_else(gh_auth_token)
+            .context(
+                "set AUTOREPO_GITHUB_TOKEN/GH_TOKEN/GITHUB_TOKEN or authenticate with gh before running --yes",
+            )?;
 
         Ok(Self {
             http: reqwest::Client::new(),
@@ -98,11 +128,146 @@ impl LiveGitHubClient {
         self.ensure_repository(repo).await
     }
 
+    pub async fn repository_exists(&self, repo: &RepoRef) -> Result<bool> {
+        Ok(self.repository(repo).await?.is_some())
+    }
+
     async fn repository(&self, repo: &RepoRef) -> Result<Option<RepoResponse>> {
         self.get_optional(repo, "").await
     }
 
-    async fn delete_repository(&self, repo: &RepoRef) -> Result<()> {
+    pub async fn reconcile_operation(
+        &self,
+        repo: &RepoRef,
+        operation: &Operation,
+    ) -> Result<OperationReconciliation> {
+        match operation {
+            Operation::Label { name, .. } => {
+                let path = format!("labels/{}", urlencoding::encode(name));
+                if self
+                    .get_optional::<LabelResponse>(repo, &path)
+                    .await?
+                    .is_some()
+                {
+                    return Ok(Self::reconciliation(
+                        OperationReconciliationStatus::AlreadyPresent,
+                        "Label already exists and will be reused.",
+                    ));
+                }
+                Ok(Self::reconciliation(
+                    OperationReconciliationStatus::Missing,
+                    "Label is missing and will be created.",
+                ))
+            }
+            Operation::Milestone { title, .. } => {
+                if self.find_milestone(repo, title).await?.is_some() {
+                    return Ok(Self::reconciliation(
+                        OperationReconciliationStatus::AlreadyPresent,
+                        "Milestone already exists and will be reused.",
+                    ));
+                }
+                Ok(Self::reconciliation(
+                    OperationReconciliationStatus::Missing,
+                    "Milestone is missing and will be created.",
+                ))
+            }
+            Operation::File { path, marker, .. } => {
+                let api_path = contents_path(path, None);
+                if let Some(existing) = self
+                    .get_optional::<ContentResponse>(repo, &api_path)
+                    .await?
+                {
+                    let decoded = decode_content(&existing.content)?;
+                    if decoded.contains(marker) {
+                        return Ok(Self::reconciliation(
+                            OperationReconciliationStatus::PackOwned,
+                            "File already has this pack marker and will be skipped.",
+                        ));
+                    }
+                    return Ok(Self::blocking_reconciliation(
+                        "File exists without this pack marker. Hydrate will stop before overwriting user-owned content.",
+                    ));
+                }
+                Ok(Self::reconciliation(
+                    OperationReconciliationStatus::Missing,
+                    "File is missing and will be created.",
+                ))
+            }
+            Operation::Branch { id, name, marker } => {
+                if self.get_ref(repo, name).await?.is_some() {
+                    let marker_path = branch_marker_path(id);
+                    let api_path = contents_path(&marker_path, Some(name));
+                    if let Some(existing) = self
+                        .get_optional::<ContentResponse>(repo, &api_path)
+                        .await?
+                    {
+                        let decoded = decode_content(&existing.content)?;
+                        if decoded.contains(marker) {
+                            return Ok(Self::reconciliation(
+                                OperationReconciliationStatus::PackOwned,
+                                "Branch has this pack marker and will be skipped.",
+                            ));
+                        }
+                    }
+                    return Ok(Self::blocking_reconciliation(
+                        "Branch exists without this pack marker. Hydrate will stop before overwriting user-owned history.",
+                    ));
+                }
+                Ok(Self::reconciliation(
+                    OperationReconciliationStatus::Missing,
+                    "Branch is missing and will be created from the default branch.",
+                ))
+            }
+            Operation::Issue { title, marker, .. } => {
+                if self.find_marked_issue(repo, marker).await?.is_some() {
+                    return Ok(Self::reconciliation(
+                        OperationReconciliationStatus::PackOwned,
+                        "Issue already has this pack marker and will be skipped.",
+                    ));
+                }
+                if self.find_unmarked_issue_title(repo, title).await?.is_some() {
+                    return Ok(Self::blocking_reconciliation(
+                        "Issue title already exists without this pack marker. Hydrate will stop before creating a duplicate or overwriting user-owned content.",
+                    ));
+                }
+                Ok(Self::reconciliation(
+                    OperationReconciliationStatus::Missing,
+                    "Issue is missing and will be opened.",
+                ))
+            }
+            Operation::PullRequest { title, marker, .. } => {
+                if self.find_marked_pr(repo, marker).await?.is_some() {
+                    return Ok(Self::reconciliation(
+                        OperationReconciliationStatus::PackOwned,
+                        "Pull request already has this pack marker and will be skipped.",
+                    ));
+                }
+                if self.find_unmarked_pr_title(repo, title).await?.is_some() {
+                    return Ok(Self::blocking_reconciliation(
+                        "Pull request title already exists without this pack marker. Hydrate will stop before creating a duplicate or overwriting user-owned content.",
+                    ));
+                }
+                Ok(Self::reconciliation(
+                    OperationReconciliationStatus::Missing,
+                    "Pull request is missing and will be opened.",
+                ))
+            }
+            Operation::WorkflowDispatch { .. } => Ok(Self::reconciliation(
+                OperationReconciliationStatus::Skipped,
+                "Workflow dispatch is skipped because idempotent dispatch markers are not available yet.",
+            )),
+            Operation::WarmupNote { .. }
+            | Operation::WarmupChecklist { .. }
+            | Operation::WarmupAppSession { .. }
+            | Operation::WarmupAppLink { .. }
+            | Operation::WarmupAutomationDraft { .. } => Ok(Self::reconciliation(
+                OperationReconciliationStatus::LocalOnly,
+                "Warmup guidance is local-only and does not write to GitHub.",
+            )),
+        }
+    }
+
+    pub async fn delete_repository(&self, repo: &RepoRef) -> Result<()> {
         self.send_empty(Method::DELETE, repo, "", None)
             .await
             .with_context(|| {
@@ -113,7 +278,26 @@ impl LiveGitHubClient {
             })
     }
 
-    async fn wait_for_repository_deleted(&self, repo: &RepoRef) -> Result<()> {
+    fn reconciliation(
+        status: OperationReconciliationStatus,
+        summary: impl Into<String>,
+    ) -> OperationReconciliation {
+        OperationReconciliation {
+            status,
+            summary: summary.into(),
+            blocks_hydrate: false,
+        }
+    }
+
+    fn blocking_reconciliation(summary: impl Into<String>) -> OperationReconciliation {
+        OperationReconciliation {
+            status: OperationReconciliationStatus::UserOwnedConflict,
+            summary: summary.into(),
+            blocks_hydrate: true,
+        }
+    }
+
+    pub async fn wait_for_repository_deleted(&self, repo: &RepoRef) -> Result<()> {
         for _ in 0..10 {
             if self.repository(repo).await?.is_none() {
                 return Ok(());
@@ -499,12 +683,18 @@ impl LiveGitHubClient {
     }
 }
 
-fn gh_auth_token() -> Result<String> {
-    let output = Command::new("gh").args(["auth", "token"]).output()?;
+pub(crate) fn gh_auth_token() -> Result<String> {
+    let output = Command::new("gh")
+        .args(["auth", "token", "--hostname", "github.com"])
+        .output()?;
     if !output.status.success() {
         bail!("gh auth token failed");
     }
-    Ok(String::from_utf8(output.stdout)?.trim().to_string())
+    let token = String::from_utf8(output.stdout)?.trim().to_string();
+    if token.is_empty() {
+        bail!("gh auth token returned an empty token");
+    }
+    Ok(token)
 }
 
 async fn parse_response<T: DeserializeOwned>(response: reqwest::Response, url: &str) -> Result<T> {

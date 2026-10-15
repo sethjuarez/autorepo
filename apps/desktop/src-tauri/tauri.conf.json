@@ -28,11 +28,13 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.githubusercontent.com; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.githubusercontent.com; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:17420 ws://127.0.0.1:17420; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
     }
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/icon.ico",
@@ -40,6 +42,17 @@
     ],
     "resources": {
       "../../cli/packs/generic-starter": "packs/generic-starter"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVEODczQUNGNDBDNEQ1QTAKUldTZzFjUkF6enFIWFlSMUVmb2c4K29rR2lNWlgydFFKdVNybHcvbktBTlJNZWRvYmlmR29mMU4K",
+      "endpoints": [
+        "https://github.com/sethjuarez/autorepo/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

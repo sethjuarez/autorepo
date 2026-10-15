@@ -5,6 +5,8 @@
       "release-type": "node",
       "package-name": "autorepo",
       "changelog-path": "CHANGELOG.md",
+      "draft": true,
+      "force-tag-creation": true,
       "include-component-in-tag": false,
       "include-v-in-tag": true,
       "extra-files": [

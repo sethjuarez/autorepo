@@ -1367,6 +1367,97 @@ button {
   margin: 12px;
 }
 
+.reconciliation-panel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--borderColor-muted, var(--app-border));
+  background: var(--bgColor-success-muted, rgba(46, 160, 67, 0.12));
+  padding: 10px 12px;
+}
+
+.reconciliation-panel-danger {
+  color: var(--fgColor-danger, #cf222e);
+  background: var(--bgColor-danger-muted, rgba(248, 81, 73, 0.12));
+}
+
+.reconciliation-copy {
+  min-width: 0;
+}
+
+.reconciliation-summary {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.reconciliation-chip,
+.operation-reconciliation {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--borderColor-muted, var(--app-border));
+  border-radius: 999px;
+  color: var(--fgColor-muted, var(--app-muted-fg));
+  background: var(--app-surface);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.reconciliation-chip {
+  padding: 5px 8px;
+}
+
+.operation-reconciliation {
+  justify-self: end;
+  padding: 4px 7px;
+}
+
+.reconciliation-chip-missing,
+.operation-reconciliation-missing {
+  color: var(--fgColor-accent, #0969da);
+  border-color: var(--borderColor-accent-muted, #0969da);
+}
+
+.reconciliation-chip-pack-owned,
+.operation-reconciliation-packOwned {
+  color: var(--fgColor-success, #1a7f37);
+  border-color: var(--borderColor-success-muted, rgba(46, 160, 67, 0.4));
+}
+
+.reconciliation-chip-present,
+.operation-reconciliation-alreadyPresent,
+.operation-reconciliation-localOnly,
+.operation-reconciliation-skipped {
+  color: var(--fgColor-muted, var(--app-muted-fg));
+}
+
+.reconciliation-chip-conflict,
+.operation-reconciliation-userOwnedConflict {
+  color: var(--fgColor-danger, #cf222e);
+  border-color: var(--borderColor-danger-muted, rgba(248, 81, 73, 0.4));
+}
+
+.reconciliation-conflicts {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 6px;
+  margin: 0;
+  padding-left: 22px;
+  color: var(--fgColor-default, var(--app-fg));
+  font-size: 12px;
+}
+
+.reconciliation-conflicts li span {
+  display: block;
+  color: var(--fgColor-muted, var(--app-muted-fg));
+  margin-top: 2px;
+}
+
 @keyframes autorepo-spin {
   to {
     transform: rotate(360deg);
