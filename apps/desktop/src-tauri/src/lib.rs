@@ -67,6 +67,13 @@ struct GitHubRepositorySuggestion {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct GitHubRepositorySearchResult {
+    repositories: Vec<GitHubRepositorySuggestion>,
+    warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct GitHubRepositoryListItem {
     name: String,
     full_name: String,
@@ -1297,7 +1304,7 @@ async fn github_auth_status() -> Result<GithubAuthStatus, String> {
 async fn search_github_repositories(
     owner: Option<String>,
     query: String,
-) -> Result<Vec<GitHubRepositorySuggestion>, String> {
+) -> Result<GitHubRepositorySearchResult, String> {
     tauri::async_runtime::spawn_blocking(move || {
         search_github_repositories_blocking(owner.as_deref(), &query)
     })
@@ -1443,7 +1450,8 @@ fn check_github_repository_packs_blocking(
             "Repository {full_name} was not found or is not accessible."
         ));
     };
-    let pack_paths = github_pack_paths(&token, &repository.full_name, &repository.default_branch)?;
+    let pack_paths = github_pack_paths(&token, &repository.full_name, &repository.default_branch)
+        .map_err(|error| error.to_string())?;
     if pack_paths.is_empty() {
         return Err(format!(
             "{} does not contain pack.yml or pack.yaml manifests.",
@@ -1525,7 +1533,7 @@ fn check_github_target_repository_blocking(
 fn search_github_repositories_blocking(
     owner: Option<&str>,
     query: &str,
-) -> Result<Vec<GitHubRepositorySuggestion>, String> {
+) -> Result<GitHubRepositorySearchResult, String> {
     let Some((_token_source, token)) = github_api_token() else {
         return Err("Connect GitHub before searching repositories.".to_owned());
     };
@@ -1564,7 +1572,8 @@ fn search_github_repositories_blocking(
         repositories.insert(0, repository);
     }
 
-    Ok(repositories
+    let mut warnings = Vec::new();
+    let repositories = repositories
         .into_iter()
         .filter(|repo| {
             normalized_query.is_empty()
@@ -1579,8 +1588,22 @@ fn search_github_repositories_blocking(
         .filter(|repo| owner.is_none_or(|owner| repo.full_name.starts_with(&format!("{owner}/"))))
         .take(20)
         .filter_map(|repo| {
-            let pack_paths =
-                github_pack_paths(&token, &repo.full_name, &repo.default_branch).ok()?;
+            let pack_paths = match github_pack_paths(&token, &repo.full_name, &repo.default_branch) {
+                Ok(pack_paths) => pack_paths,
+                Err(GithubPackDiscoveryError::Truncated { repo }) => {
+                    warnings.push(format!(
+                        "{repo} is too large for recursive pack discovery, so it was omitted from pack search results."
+                    ));
+                    return None;
+                }
+                Err(GithubPackDiscoveryError::Other(message)) => {
+                    warnings.push(format!(
+                        "{} could not be inspected for packs: {message}",
+                        repo.full_name
+                    ));
+                    return None;
+                }
+            };
             if pack_paths.is_empty() {
                 return None;
             }
@@ -1596,7 +1619,12 @@ fn search_github_repositories_blocking(
             })
         })
         .take(12)
-        .collect())
+        .collect();
+
+    Ok(GitHubRepositorySearchResult {
+        repositories,
+        warnings,
+    })
 }
 
 fn github_owner_repositories(
@@ -1790,7 +1818,29 @@ fn github_token_has_scope(token: &str, scope: &str) -> Result<bool, String> {
         .any(|token_scope| token_scope == scope))
 }
 
-fn github_pack_paths(token: &str, repo: &str, default_branch: &str) -> Result<Vec<String>, String> {
+#[derive(Debug)]
+enum GithubPackDiscoveryError {
+    Truncated { repo: String },
+    Other(String),
+}
+
+impl std::fmt::Display for GithubPackDiscoveryError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Truncated { repo } => write!(
+                formatter,
+                "{repo} is too large for recursive pack discovery. GitHub truncated the repository tree, so autorepo cannot safely tell whether packs exist yet."
+            ),
+            Self::Other(message) => formatter.write_str(message),
+        }
+    }
+}
+
+fn github_pack_paths(
+    token: &str,
+    repo: &str,
+    default_branch: &str,
+) -> Result<Vec<String>, GithubPackDiscoveryError> {
     let Some((owner, name)) = repo.split_once('/') else {
         return Ok(Vec::new());
     };
@@ -1800,14 +1850,16 @@ fn github_pack_paths(token: &str, repo: &str, default_branch: &str) -> Result<Ve
         .set("Accept", "application/vnd.github+json")
         .set("X-GitHub-Api-Version", "2022-11-28")
         .set("User-Agent", "autorepo-desktop")
-        .set("Authorization", &format!("Bearer {token}"))
+        .set("Authorization", &format!("token {token}"))
         .call()
-        .map_err(github_repo_search_error)?;
-    let tree = response
-        .into_json::<GitHubTreeResponse>()
-        .map_err(|_| "GitHub returned an unreadable repository tree.".to_owned())?;
+        .map_err(|error| GithubPackDiscoveryError::Other(github_repo_search_error(error)))?;
+    let tree = response.into_json::<GitHubTreeResponse>().map_err(|_| {
+        GithubPackDiscoveryError::Other("GitHub returned an unreadable repository tree.".to_owned())
+    })?;
     if tree.truncated {
-        return Ok(Vec::new());
+        return Err(GithubPackDiscoveryError::Truncated {
+            repo: repo.to_owned(),
+        });
     }
 
     Ok(tree
