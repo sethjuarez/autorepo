@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 
-use crate::github::RepoRef;
+use crate::github::{RepoRef, gh_auth_token};
 
 pub async fn run(repo: &str) -> Result<()> {
     let repo = RepoRef::parse(repo)?;
@@ -12,10 +12,20 @@ pub async fn run(repo: &str) -> Result<()> {
 }
 
 fn auth_status() -> &'static str {
-    if std::env::var_os("GITHUB_TOKEN").is_some() || std::env::var_os("GH_TOKEN").is_some() {
+    if ["AUTOREPO_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"]
+        .into_iter()
+        .any(|name| {
+            std::env::var(name)
+                .ok()
+                .map(|token| !token.trim().is_empty())
+                .unwrap_or(false)
+        })
+    {
         "token present"
+    } else if gh_auth_token().is_ok() {
+        "GitHub CLI token present"
     } else {
-        "no GITHUB_TOKEN or GH_TOKEN found"
+        "no AUTOREPO_GITHUB_TOKEN, GH_TOKEN, or GITHUB_TOKEN found"
     }
 }
 

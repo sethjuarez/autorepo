@@ -68,10 +68,19 @@ pub struct OperationReconciliation {
 
 impl LiveGitHubClient {
     pub fn from_env() -> Result<Self> {
-        let token = std::env::var("GH_TOKEN")
-            .or_else(|_| std::env::var("GITHUB_TOKEN"))
-            .or_else(|_| gh_auth_token())
-            .context("set GH_TOKEN/GITHUB_TOKEN or authenticate with gh before running --yes")?;
+        let token = ["AUTOREPO_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"]
+            .into_iter()
+            .find_map(|name| {
+                std::env::var(name)
+                    .ok()
+                    .map(|token| token.trim().to_owned())
+                    .filter(|token| !token.is_empty())
+            })
+            .map(Ok)
+            .unwrap_or_else(gh_auth_token)
+            .context(
+                "set AUTOREPO_GITHUB_TOKEN/GH_TOKEN/GITHUB_TOKEN or authenticate with gh before running --yes",
+            )?;
 
         Ok(Self {
             http: reqwest::Client::new(),
@@ -674,12 +683,18 @@ impl LiveGitHubClient {
     }
 }
 
-fn gh_auth_token() -> Result<String> {
-    let output = Command::new("gh").args(["auth", "token"]).output()?;
+pub(crate) fn gh_auth_token() -> Result<String> {
+    let output = Command::new("gh")
+        .args(["auth", "token", "--hostname", "github.com"])
+        .output()?;
     if !output.status.success() {
         bail!("gh auth token failed");
     }
-    Ok(String::from_utf8(output.stdout)?.trim().to_string())
+    let token = String::from_utf8(output.stdout)?.trim().to_string();
+    if token.is_empty() {
+        bail!("gh auth token returned an empty token");
+    }
+    Ok(token)
 }
 
 async fn parse_response<T: DeserializeOwned>(response: reqwest::Response, url: &str) -> Result<T> {

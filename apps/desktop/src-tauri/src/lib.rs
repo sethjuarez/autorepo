@@ -447,6 +447,11 @@ fn execute_pack_hydrate_blocking(
     let (built, _repo_source_guard) =
         build_pack_plan(app, pack_source, repo_source, repo, allow_non_empty)?;
     let plan = built.plan;
+    let repo_ref = RepoRef::parse(&plan.repo).map_err(sanitize_pack_error)?;
+
+    if matches!(repository_mode, RepositoryHydrationMode::ExactReset) {
+        ensure_exact_hydrate_allowed(&repo_ref)?;
+    }
 
     let runtime = tokio::runtime::Runtime::new()
         .map_err(|_| "Hydrate runtime could not be started.".to_owned())?;
@@ -729,6 +734,42 @@ fn repository_hydration_mode(value: &str) -> Result<RepositoryHydrationMode, Str
         "existing" => Ok(RepositoryHydrationMode::PreserveExisting),
         _ => Err("Unknown hydrate mode.".to_owned()),
     }
+}
+
+fn ensure_exact_hydrate_allowed(repo: &RepoRef) -> Result<(), String> {
+    let Some((token_source, token)) = github_api_token() else {
+        return Err("Connect GitHub before running Exact hydrate.".to_owned());
+    };
+    let full_name = format!("{}/{}", repo.owner, repo.name);
+    let Some(repository) = github_repository(&token, &full_name)? else {
+        return Ok(());
+    };
+
+    let can_admin = repository
+        .permissions
+        .as_ref()
+        .map(|permissions| permissions.admin)
+        .unwrap_or(false);
+    let token_can_delete_repo = github_token_has_scope(&token, "delete_repo")?;
+    if can_admin && token_can_delete_repo {
+        return Ok(());
+    }
+
+    let mut missing = Vec::new();
+    if !can_admin {
+        missing.push("repository admin rights");
+    }
+    if !token_can_delete_repo {
+        if token_source == "GitHub CLI" {
+            clear_github_token_cache();
+        }
+        missing.push("a GitHub token with delete_repo scope");
+    }
+
+    Err(format!(
+        "Exact hydrate is disabled for {full_name} because it needs {}.",
+        missing.join(" and ")
+    ))
 }
 
 #[tauri_plugin_auditaur::auditaur_command(skip_all, err)]
@@ -2019,7 +2060,7 @@ fn github_api_token() -> Option<(&'static str, String)> {
         return Some((token.source, token.value));
     }
 
-    let env_token = ["AUTOREPO_GITHUB_TOKEN", "GITHUB_TOKEN"]
+    let env_token = ["AUTOREPO_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"]
         .into_iter()
         .find_map(|name| {
             std::env::var(name)
@@ -2037,6 +2078,12 @@ fn github_api_token() -> Option<(&'static str, String)> {
         });
     }
     Some(token)
+}
+
+fn clear_github_token_cache() {
+    if let Ok(mut cache) = GITHUB_TOKEN_CACHE.get_or_init(|| Mutex::new(None)).lock() {
+        *cache = None;
+    }
 }
 
 fn github_cli_token() -> Option<(&'static str, String)> {
