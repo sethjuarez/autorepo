@@ -24,7 +24,9 @@ import type {
   PackHydrateReport,
   PackListItem,
   PackPlanPreview,
+  PackReconciliationPreview,
   PlanOperationPreview,
+  PlanOperationReconciliationPreview,
 } from './types'
 
 export function PlanPreviewPanel({
@@ -44,6 +46,10 @@ export function PlanPreviewPanel({
   const allowNonEmpty = hydrateMode === 'existing'
   const [targetStatus, setTargetStatus] = React.useState<GitHubTargetRepositoryStatus | null>(null)
   const [preview, setPreview] = React.useState<PackPlanPreview | null>(null)
+  const [reconciliation, setReconciliation] = React.useState<PackReconciliationPreview | null>(null)
+  const [reconciliationLoading, setReconciliationLoading] = React.useState(false)
+  const [reconciliationError, setReconciliationError] = React.useState<string | null>(null)
+  const [reconciliationRefreshKey, setReconciliationRefreshKey] = React.useState(0)
   const [error, setError] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(false)
   const [running, setRunning] = React.useState(false)
@@ -59,6 +65,7 @@ export function PlanPreviewPanel({
   const [operationScope, setOperationScope] = React.useState<'writes' | 'warmups'>('writes')
   const [previewOperation, setPreviewOperation] = React.useState<PlanOperationPreview | null>(null)
   const requestId = React.useRef(0)
+  const reconciliationRequestId = React.useRef(0)
   const planOptionsRef = React.useRef<HTMLDetailsElement | null>(null)
 
   const previewPlan = React.useCallback(() => {
@@ -71,6 +78,8 @@ export function PlanPreviewPanel({
     setDryRunReport(null)
     setHydrateError(null)
     setHydrateReport(null)
+    setReconciliation(null)
+    setReconciliationError(null)
     setHydrateProgress({})
     hydrateRunIdRef.current = null
     invoke<PackPlanPreview>('preview_pack_plan', {packSource, repoSource, repo, allowNonEmpty})
@@ -93,6 +102,52 @@ export function PlanPreviewPanel({
   React.useEffect(() => {
     previewPlan()
   }, [previewPlan])
+
+  React.useEffect(() => {
+    if (hydrateMode !== 'existing' || !preview) {
+      reconciliationRequestId.current += 1
+      setReconciliation(null)
+      setReconciliationError(null)
+      setReconciliationLoading(false)
+      return
+    }
+
+    if (targetStatus?.exists === false) {
+      reconciliationRequestId.current += 1
+      setReconciliation(missingRepositoryReconciliation(preview))
+      setReconciliationError(null)
+      setReconciliationLoading(false)
+      return
+    }
+
+    if (targetStatus?.exists !== true) {
+      reconciliationRequestId.current += 1
+      setReconciliation(null)
+      setReconciliationError(null)
+      setReconciliationLoading(true)
+      return
+    }
+
+    const currentRequest = reconciliationRequestId.current + 1
+    reconciliationRequestId.current = currentRequest
+    setReconciliationLoading(true)
+    setReconciliationError(null)
+    const timer = window.setTimeout(() => {
+      invoke<PackReconciliationPreview>('preview_pack_reconciliation', {packSource, repoSource, repo, allowNonEmpty})
+        .then(result => {
+          if (reconciliationRequestId.current === currentRequest) setReconciliation(result)
+        })
+        .catch((cause: unknown) => {
+          if (reconciliationRequestId.current !== currentRequest) return
+          setReconciliation(null)
+          setReconciliationError(cause instanceof Error ? cause.message : String(cause))
+        })
+        .finally(() => {
+          if (reconciliationRequestId.current === currentRequest) setReconciliationLoading(false)
+        })
+    }, 600)
+    return () => window.clearTimeout(timer)
+  }, [allowNonEmpty, hydrateMode, packSource, preview, reconciliationRefreshKey, repo, repoSource, targetStatus?.exists])
 
   React.useEffect(() => {
     let unlisten: (() => void) | null = null
@@ -196,13 +251,37 @@ export function PlanPreviewPanel({
       .catch((cause: unknown) => setHydrateError(cause instanceof Error ? cause.message : String(cause)))
       .finally(() => {
         setHydrating(false)
+        if (hydrateMode === 'existing') setReconciliationRefreshKey(key => key + 1)
       })
   }, [allowNonEmpty, hydrateMode, packSource, preview, repo, repoSource])
 
   const completed = Boolean(dryRunReport) && preview ? completedSteps >= preview.totalOperations : false
   const hydrated = Boolean(hydrateReport)
   const loadingMessage = selectedPack ? `Loading ${selectedPack.name} preview...` : 'Loading operation preview...'
-  const liveWriteDisabled = !preview || loading || running || hydrating
+  const existingReconciliationBlocked = hydrateMode === 'existing' && (
+    reconciliationLoading ||
+    Boolean(reconciliationError) ||
+    !reconciliation ||
+    reconciliation.conflicts > 0
+  )
+  const liveWriteDisabled = !preview || loading || running || hydrating || existingReconciliationBlocked
+  const hydrateDisabledReason = hydrateMode === 'existing'
+    ? reconciliationLoading
+      ? 'Checking existing repository reconciliation'
+      : reconciliationError
+        ? 'Reconciliation check failed'
+        : reconciliation?.conflicts
+          ? 'Resolve user-owned conflicts before hydrating'
+          : !reconciliation
+            ? 'Waiting for repository reconciliation'
+            : null
+    : null
+  const hydrateButtonTitle = hydrating ? 'Hydrating repository' : hydrateDisabledReason ?? 'Hydrate repository'
+  const reconciliationByIndex = React.useMemo(() => {
+    const byIndex = new Map<number, PlanOperationReconciliationPreview>()
+    for (const operation of reconciliation?.operations ?? []) byIndex.set(operation.index, operation)
+    return byIndex
+  }, [reconciliation])
   const hydrateWriteProgress = React.useMemo(() => {
     const repositorySetupState = hydrateProgress[REPOSITORY_SETUP_PROGRESS_INDEX]
     const repositorySetupProcessed = repositorySetupState === 'done' || repositorySetupState === 'skipped' || repositorySetupState === 'failed'
@@ -310,8 +389,8 @@ export function PlanPreviewPanel({
           <button
             type="button"
             className="plan-icon-button plan-hydrate-button"
-            aria-label={hydrating ? 'Hydrating repository' : 'Hydrate repository'}
-            title={hydrating ? 'Hydrating repository' : 'Hydrate repository'}
+            aria-label={hydrateButtonTitle}
+            title={hydrateButtonTitle}
             disabled={liveWriteDisabled}
             onClick={() => setHydrateConfirming(true)}
           >
@@ -343,6 +422,13 @@ export function PlanPreviewPanel({
           <TriangleAlert size={16} />
           <Text sx={{fontSize: 0}}>{hydrateError}</Text>
         </Box>
+      ) : null}
+      {hydrateMode === 'existing' ? (
+        <ReconciliationPanel
+          reconciliation={reconciliation}
+          loading={reconciliationLoading}
+          error={reconciliationError}
+        />
       ) : null}
 
       {preview ? (
@@ -391,6 +477,7 @@ export function PlanPreviewPanel({
                   key={`${operation.index}-${operation.id}`}
                   operation={operation}
                   progress={hydrateProgress[operation.index]}
+                  reconciliation={reconciliationByIndex.get(operation.index)}
                   selected={previewOperation?.index === operation.index && previewOperation.id === operation.id}
                   onSelect={() => setPreviewOperation(operation)}
                 />
@@ -424,4 +511,118 @@ export function PlanPreviewPanel({
       <OperationPreviewLightbox operation={previewOperation} onClose={() => setPreviewOperation(null)} />
     </Box>
   )
+}
+
+function ReconciliationPanel({
+  reconciliation,
+  loading,
+  error,
+}: {
+  reconciliation: PackReconciliationPreview | null
+  loading: boolean
+  error: string | null
+}) {
+  if (loading) {
+    return (
+      <Box className="reconciliation-panel" role="status">
+        <span className="plan-loading-spinner" aria-hidden="true" />
+        <Text sx={{fontSize: 0}}>Checking existing repository for pack-owned resources and user-owned conflicts...</Text>
+      </Box>
+    )
+  }
+
+  if (error) {
+    return (
+      <Box className="reconciliation-panel reconciliation-panel-danger" role="alert">
+        <TriangleAlert size={16} />
+        <Box>
+          <Text sx={{display: 'block', fontWeight: 600, fontSize: 0}}>Reconciliation check failed</Text>
+          <Text sx={{display: 'block', color: 'fg.muted', fontSize: 0}}>{error}</Text>
+        </Box>
+      </Box>
+    )
+  }
+
+  if (!reconciliation) return null
+
+  const totalSafe = reconciliation.missing + reconciliation.packOwned + reconciliation.alreadyPresent
+  const conflicts = reconciliation.operations.filter(operation => operation.blocksHydrate)
+  const title = reconciliation.conflicts > 0
+    ? `${reconciliation.conflicts} user-owned conflict${reconciliation.conflicts === 1 ? '' : 's'} must be resolved before hydrate.`
+    : 'Hydrate into existing can proceed without overwriting user-owned resources.'
+
+  return (
+    <Box className={reconciliation.conflicts > 0 ? 'reconciliation-panel reconciliation-panel-danger' : 'reconciliation-panel'}>
+      {reconciliation.conflicts > 0 ? <TriangleAlert size={16} /> : null}
+      <Box className="reconciliation-copy">
+        <Text sx={{display: 'block', fontWeight: 600, fontSize: 0}}>{title}</Text>
+        <Text sx={{display: 'block', color: 'fg.muted', fontSize: 0}}>
+          {totalSafe} GitHub resource{totalSafe === 1 ? '' : 's'} will be created, reused, or skipped by marker; {reconciliation.skipped + reconciliation.localOnly} item{reconciliation.skipped + reconciliation.localOnly === 1 ? '' : 's'} will not write to GitHub.
+        </Text>
+      </Box>
+      <Box className="reconciliation-summary" aria-label="Reconciliation summary">
+        <span className="reconciliation-chip reconciliation-chip-missing">{reconciliation.missing} missing</span>
+        <span className="reconciliation-chip reconciliation-chip-pack-owned">{reconciliation.packOwned} pack-owned</span>
+        <span className="reconciliation-chip reconciliation-chip-present">{reconciliation.alreadyPresent} already present</span>
+        <span className="reconciliation-chip reconciliation-chip-conflict">{reconciliation.conflicts} user-owned</span>
+      </Box>
+      {conflicts.length > 0 ? (
+        <Box as="ul" className="reconciliation-conflicts" aria-label="User-owned conflicts">
+          {conflicts.map(conflict => (
+            <li key={`${conflict.index}-${conflict.kind}-${conflict.target}`}>
+              <strong>{conflict.kind}: {conflict.target}</strong>
+              <span>{conflict.summary}</span>
+            </li>
+          ))}
+        </Box>
+      ) : null}
+    </Box>
+  )
+}
+
+function missingRepositoryReconciliation(preview: PackPlanPreview): PackReconciliationPreview {
+  const operations: PlanOperationReconciliationPreview[] = preview.operations.map(operation => {
+    if (!operation.writesToGithub) {
+      return {
+        index: operation.index,
+        kind: operation.kind,
+        target: operation.target,
+        status: 'localOnly',
+        summary: 'Warmup guidance is local-only and does not write to GitHub.',
+        blocksHydrate: false,
+      }
+    }
+    if (operation.kind === 'Workflow dispatch') {
+      return {
+        index: operation.index,
+        kind: operation.kind,
+        target: operation.target,
+        status: 'skipped',
+        summary: 'Workflow dispatch is skipped because idempotent dispatch markers are not available yet.',
+        blocksHydrate: false,
+      }
+    }
+    return {
+      index: operation.index,
+      kind: operation.kind,
+      target: operation.target,
+      status: 'missing',
+      summary: 'Repository does not exist yet; this resource will be created after repository setup.',
+      blocksHydrate: false,
+    }
+  })
+  return summarizeReconciliation(preview.repo, operations)
+}
+
+function summarizeReconciliation(repo: string, operations: PlanOperationReconciliationPreview[]): PackReconciliationPreview {
+  return {
+    repo,
+    operations,
+    conflicts: operations.filter(operation => operation.blocksHydrate).length,
+    missing: operations.filter(operation => operation.status === 'missing').length,
+    packOwned: operations.filter(operation => operation.status === 'packOwned').length,
+    alreadyPresent: operations.filter(operation => operation.status === 'alreadyPresent').length,
+    skipped: operations.filter(operation => operation.status === 'skipped').length,
+    localOnly: operations.filter(operation => operation.status === 'localOnly').length,
+  }
 }

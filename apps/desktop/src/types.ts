@@ -24,6 +24,17 @@ export type PackPlanPreview = {
   operations: PlanOperationPreview[]
 }
 
+export type PackReconciliationPreview = {
+  repo: string
+  conflicts: number
+  missing: number
+  packOwned: number
+  alreadyPresent: number
+  skipped: number
+  localOnly: number
+  operations: PlanOperationReconciliationPreview[]
+}
+
 export type PackDryRunReport = {
   repo: string
   packId: string
@@ -55,6 +66,13 @@ export type PackHydrateProgress = {
 
 export type OperationProgressState = 'pending' | 'running' | 'done' | 'skipped' | 'failed'
 export type HydrateMode = 'exact' | 'existing'
+export type OperationReconciliationStatus =
+  | 'missing'
+  | 'packOwned'
+  | 'alreadyPresent'
+  | 'userOwnedConflict'
+  | 'localOnly'
+  | 'skipped'
 
 export type PackListItem = {
   id: string
@@ -125,6 +143,15 @@ export type PlanOperationPreview = {
   details: string[]
   writesToGithub: boolean
   contentPreview: OperationContentPreview | null
+}
+
+export type PlanOperationReconciliationPreview = {
+  index: number
+  kind: string
+  target: string
+  status: OperationReconciliationStatus
+  summary: string
+  blocksHydrate: boolean
 }
 
 export type OperationContentPreview = {

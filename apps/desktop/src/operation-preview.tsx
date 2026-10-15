@@ -2,7 +2,7 @@ import {Box, Heading, Label, Text} from '@primer/react'
 import {X} from 'lucide-react'
 import React from 'react'
 import {operationAction, operationIcon} from './icons'
-import type {OperationProgressState, PlanOperationPreview} from './types'
+import type {OperationProgressState, PlanOperationPreview, PlanOperationReconciliationPreview} from './types'
 export function OperationPreviewLightbox({
   operation,
   onClose,
@@ -98,11 +98,13 @@ function renderPreviewMarkdown(body: string) {
 export function OperationRow({
   operation,
   progress,
+  reconciliation,
   selected,
   onSelect,
 }: {
   operation: PlanOperationPreview
   progress?: OperationProgressState
+  reconciliation?: PlanOperationReconciliationPreview
   selected: boolean
   onSelect: () => void
 }) {
@@ -124,10 +126,35 @@ export function OperationRow({
           <Text className="operation-target">{operation.target}</Text>
           <Label>{operation.kind}</Label>
           <Text className="operation-action">{action}</Text>
+          {reconciliation ? (
+            <span
+              className={`operation-reconciliation operation-reconciliation-${reconciliation.status}`}
+              title={reconciliation.summary}
+            >
+              {reconciliationLabel(reconciliation.status)}
+            </span>
+          ) : null}
         </Box>
       </Box>
     </button>
   )
 }
 
-
+function reconciliationLabel(status: PlanOperationReconciliationPreview['status']) {
+  switch (status) {
+    case 'missing':
+      return 'Create'
+    case 'packOwned':
+      return 'Pack-owned'
+    case 'alreadyPresent':
+      return 'Reuse'
+    case 'userOwnedConflict':
+      return 'Blocked'
+    case 'localOnly':
+      return 'Local'
+    case 'skipped':
+      return 'Skipped'
+    default:
+      return status
+  }
+}

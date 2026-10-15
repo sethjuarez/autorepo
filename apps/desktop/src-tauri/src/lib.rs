@@ -1,6 +1,6 @@
 use autorepo::{
     executor::{ExecutionProgress, Executor, RepositoryHydrationMode},
-    github::RepoRef,
+    github::{LiveGitHubClient, OperationReconciliation, OperationReconciliationStatus, RepoRef},
     ops::Operation,
     pack::Pack,
     planner::{Plan, PlanContext, Planner},
@@ -182,6 +182,19 @@ struct PackPlanPreview {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct PackReconciliationPreview {
+    repo: String,
+    conflicts: usize,
+    missing: usize,
+    pack_owned: usize,
+    already_present: usize,
+    skipped: usize,
+    local_only: usize,
+    operations: Vec<PlanOperationReconciliationPreview>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct PackDryRunReport {
     repo: String,
     pack_id: String,
@@ -239,6 +252,17 @@ struct PlanOperationPreview {
     details: Vec<String>,
     writes_to_github: bool,
     content_preview: Option<OperationContentPreview>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PlanOperationReconciliationPreview {
+    index: usize,
+    kind: &'static str,
+    target: String,
+    status: &'static str,
+    summary: String,
+    blocks_hydrate: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -333,6 +357,27 @@ async fn execute_pack_dry_run(
 }
 
 #[tauri_plugin_auditaur::auditaur_command(skip_all, err)]
+async fn preview_pack_reconciliation(
+    app: AppHandle,
+    pack_source: String,
+    repo_source: String,
+    repo: String,
+    allow_non_empty: bool,
+) -> Result<PackReconciliationPreview, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        preview_pack_reconciliation_blocking(
+            &app,
+            &pack_source,
+            &repo_source,
+            repo,
+            allow_non_empty,
+        )
+    })
+    .await
+    .map_err(|_| "Reconciliation preview task failed.".to_owned())?
+}
+
+#[tauri_plugin_auditaur::auditaur_command(skip_all, err)]
 #[expect(
     clippy::too_many_arguments,
     reason = "Tauri command parameters mirror the frontend IPC payload"
@@ -423,6 +468,82 @@ fn execute_pack_hydrate_blocking(
     })
 }
 
+fn preview_pack_reconciliation_blocking(
+    app: &AppHandle,
+    pack_source: &str,
+    repo_source: &str,
+    repo: String,
+    allow_non_empty: bool,
+) -> Result<PackReconciliationPreview, String> {
+    let repo_ref = RepoRef::parse(&repo).map_err(sanitize_pack_error)?;
+    let (built, _repo_source_guard) =
+        build_pack_plan(app, pack_source, repo_source, repo, allow_non_empty)?;
+    let plan = built.plan;
+    let milestone_titles = milestone_titles(&plan.operations);
+
+    let runtime = tokio::runtime::Runtime::new()
+        .map_err(|_| "Reconciliation runtime could not be started.".to_owned())?;
+    let github = LiveGitHubClient::from_env().map_err(sanitize_hydrate_error)?;
+    let repository_exists = runtime
+        .block_on(github.repository_exists(&repo_ref))
+        .map_err(sanitize_hydrate_error)?;
+
+    let mut operations = Vec::with_capacity(plan.operations.len());
+    for (offset, operation) in plan.operations.iter().enumerate() {
+        let index = offset + 1;
+        let preview = operation_preview(index, operation, &milestone_titles);
+        let reconciliation = if repository_exists {
+            runtime
+                .block_on(github.reconcile_operation(&repo_ref, operation))
+                .map_err(sanitize_hydrate_error)?
+        } else {
+            missing_repository_reconciliation(operation)
+        };
+        operations.push(operation_reconciliation_preview(
+            preview.index,
+            preview.kind,
+            preview.target,
+            reconciliation,
+        ));
+    }
+
+    let conflicts = operations
+        .iter()
+        .filter(|operation| operation.blocks_hydrate)
+        .count();
+    let missing = operations
+        .iter()
+        .filter(|operation| operation.status == "missing")
+        .count();
+    let pack_owned = operations
+        .iter()
+        .filter(|operation| operation.status == "packOwned")
+        .count();
+    let already_present = operations
+        .iter()
+        .filter(|operation| operation.status == "alreadyPresent")
+        .count();
+    let skipped = operations
+        .iter()
+        .filter(|operation| operation.status == "skipped")
+        .count();
+    let local_only = operations
+        .iter()
+        .filter(|operation| operation.status == "localOnly")
+        .count();
+
+    Ok(PackReconciliationPreview {
+        repo: plan.repo,
+        conflicts,
+        missing,
+        pack_owned,
+        already_present,
+        skipped,
+        local_only,
+        operations,
+    })
+}
+
 fn preview_pack_plan_blocking(
     app: &AppHandle,
     pack_source: &str,
@@ -460,6 +581,57 @@ fn preview_pack_plan_blocking(
         local_warmups,
         operations,
     })
+}
+
+fn missing_repository_reconciliation(operation: &Operation) -> OperationReconciliation {
+    match operation {
+        Operation::WorkflowDispatch { .. } => OperationReconciliation {
+            status: OperationReconciliationStatus::Skipped,
+            summary: "Workflow dispatch is skipped because idempotent dispatch markers are not available yet.".to_owned(),
+            blocks_hydrate: false,
+        },
+        Operation::WarmupNote { .. }
+        | Operation::WarmupChecklist { .. }
+        | Operation::WarmupAppSession { .. }
+        | Operation::WarmupAppLink { .. }
+        | Operation::WarmupAutomationDraft { .. } => OperationReconciliation {
+            status: OperationReconciliationStatus::LocalOnly,
+            summary: "Warmup guidance is local-only and does not write to GitHub.".to_owned(),
+            blocks_hydrate: false,
+        },
+        _ => OperationReconciliation {
+            status: OperationReconciliationStatus::Missing,
+            summary: "Repository does not exist yet; this resource will be created after repository setup.".to_owned(),
+            blocks_hydrate: false,
+        },
+    }
+}
+
+fn operation_reconciliation_preview(
+    index: usize,
+    kind: &'static str,
+    target: String,
+    reconciliation: OperationReconciliation,
+) -> PlanOperationReconciliationPreview {
+    PlanOperationReconciliationPreview {
+        index,
+        kind,
+        target,
+        status: reconciliation_status(&reconciliation.status),
+        summary: reconciliation.summary,
+        blocks_hydrate: reconciliation.blocks_hydrate,
+    }
+}
+
+fn reconciliation_status(status: &OperationReconciliationStatus) -> &'static str {
+    match status {
+        OperationReconciliationStatus::Missing => "missing",
+        OperationReconciliationStatus::PackOwned => "packOwned",
+        OperationReconciliationStatus::AlreadyPresent => "alreadyPresent",
+        OperationReconciliationStatus::UserOwnedConflict => "userOwnedConflict",
+        OperationReconciliationStatus::LocalOnly => "localOnly",
+        OperationReconciliationStatus::Skipped => "skipped",
+    }
 }
 
 struct BuiltPackPlan {
@@ -1909,6 +2081,7 @@ pub fn run() {
             validate_pack,
             list_repo_packs,
             preview_pack_plan,
+            preview_pack_reconciliation,
             execute_pack_dry_run,
             execute_pack_hydrate
         ])
