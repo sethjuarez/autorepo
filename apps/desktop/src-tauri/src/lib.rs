@@ -1,6 +1,6 @@
 use autorepo::{
     executor::{ExecutionProgress, Executor, RepositoryHydrationMode},
-    github::RepoRef,
+    github::{LiveGitHubClient, OperationReconciliation, OperationReconciliationStatus, RepoRef},
     ops::Operation,
     pack::Pack,
     planner::{Plan, PlanContext, Planner},
@@ -63,6 +63,13 @@ struct GitHubRepositorySuggestion {
     url: String,
     pack_count: usize,
     pack_paths: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GitHubRepositorySearchResult {
+    repositories: Vec<GitHubRepositorySuggestion>,
+    warnings: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -182,6 +189,19 @@ struct PackPlanPreview {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct PackReconciliationPreview {
+    repo: String,
+    conflicts: usize,
+    missing: usize,
+    pack_owned: usize,
+    already_present: usize,
+    skipped: usize,
+    local_only: usize,
+    operations: Vec<PlanOperationReconciliationPreview>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct PackDryRunReport {
     repo: String,
     pack_id: String,
@@ -239,6 +259,17 @@ struct PlanOperationPreview {
     details: Vec<String>,
     writes_to_github: bool,
     content_preview: Option<OperationContentPreview>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PlanOperationReconciliationPreview {
+    index: usize,
+    kind: &'static str,
+    target: String,
+    status: &'static str,
+    summary: String,
+    blocks_hydrate: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -333,6 +364,27 @@ async fn execute_pack_dry_run(
 }
 
 #[tauri_plugin_auditaur::auditaur_command(skip_all, err)]
+async fn preview_pack_reconciliation(
+    app: AppHandle,
+    pack_source: String,
+    repo_source: String,
+    repo: String,
+    allow_non_empty: bool,
+) -> Result<PackReconciliationPreview, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        preview_pack_reconciliation_blocking(
+            &app,
+            &pack_source,
+            &repo_source,
+            repo,
+            allow_non_empty,
+        )
+    })
+    .await
+    .map_err(|_| "Reconciliation preview task failed.".to_owned())?
+}
+
+#[tauri_plugin_auditaur::auditaur_command(skip_all, err)]
 #[expect(
     clippy::too_many_arguments,
     reason = "Tauri command parameters mirror the frontend IPC payload"
@@ -395,6 +447,11 @@ fn execute_pack_hydrate_blocking(
     let (built, _repo_source_guard) =
         build_pack_plan(app, pack_source, repo_source, repo, allow_non_empty)?;
     let plan = built.plan;
+    let repo_ref = RepoRef::parse(&plan.repo).map_err(sanitize_pack_error)?;
+
+    if matches!(repository_mode, RepositoryHydrationMode::ExactReset) {
+        ensure_exact_hydrate_allowed(&repo_ref)?;
+    }
 
     let runtime = tokio::runtime::Runtime::new()
         .map_err(|_| "Hydrate runtime could not be started.".to_owned())?;
@@ -420,6 +477,82 @@ fn execute_pack_hydrate_blocking(
         total_operations: plan.operations.len(),
         write_operations: plan_operation_write_count(&plan.operations),
         local_warmups: plan.operations.len() - plan_operation_write_count(&plan.operations),
+    })
+}
+
+fn preview_pack_reconciliation_blocking(
+    app: &AppHandle,
+    pack_source: &str,
+    repo_source: &str,
+    repo: String,
+    allow_non_empty: bool,
+) -> Result<PackReconciliationPreview, String> {
+    let repo_ref = RepoRef::parse(&repo).map_err(sanitize_pack_error)?;
+    let (built, _repo_source_guard) =
+        build_pack_plan(app, pack_source, repo_source, repo, allow_non_empty)?;
+    let plan = built.plan;
+    let milestone_titles = milestone_titles(&plan.operations);
+
+    let runtime = tokio::runtime::Runtime::new()
+        .map_err(|_| "Reconciliation runtime could not be started.".to_owned())?;
+    let github = LiveGitHubClient::from_env().map_err(sanitize_hydrate_error)?;
+    let repository_exists = runtime
+        .block_on(github.repository_exists(&repo_ref))
+        .map_err(sanitize_hydrate_error)?;
+
+    let mut operations = Vec::with_capacity(plan.operations.len());
+    for (offset, operation) in plan.operations.iter().enumerate() {
+        let index = offset + 1;
+        let preview = operation_preview(index, operation, &milestone_titles);
+        let reconciliation = if repository_exists {
+            runtime
+                .block_on(github.reconcile_operation(&repo_ref, operation))
+                .map_err(sanitize_hydrate_error)?
+        } else {
+            missing_repository_reconciliation(operation)
+        };
+        operations.push(operation_reconciliation_preview(
+            preview.index,
+            preview.kind,
+            preview.target,
+            reconciliation,
+        ));
+    }
+
+    let conflicts = operations
+        .iter()
+        .filter(|operation| operation.blocks_hydrate)
+        .count();
+    let missing = operations
+        .iter()
+        .filter(|operation| operation.status == "missing")
+        .count();
+    let pack_owned = operations
+        .iter()
+        .filter(|operation| operation.status == "packOwned")
+        .count();
+    let already_present = operations
+        .iter()
+        .filter(|operation| operation.status == "alreadyPresent")
+        .count();
+    let skipped = operations
+        .iter()
+        .filter(|operation| operation.status == "skipped")
+        .count();
+    let local_only = operations
+        .iter()
+        .filter(|operation| operation.status == "localOnly")
+        .count();
+
+    Ok(PackReconciliationPreview {
+        repo: plan.repo,
+        conflicts,
+        missing,
+        pack_owned,
+        already_present,
+        skipped,
+        local_only,
+        operations,
     })
 }
 
@@ -460,6 +593,57 @@ fn preview_pack_plan_blocking(
         local_warmups,
         operations,
     })
+}
+
+fn missing_repository_reconciliation(operation: &Operation) -> OperationReconciliation {
+    match operation {
+        Operation::WorkflowDispatch { .. } => OperationReconciliation {
+            status: OperationReconciliationStatus::Skipped,
+            summary: "Workflow dispatch is skipped because idempotent dispatch markers are not available yet.".to_owned(),
+            blocks_hydrate: false,
+        },
+        Operation::WarmupNote { .. }
+        | Operation::WarmupChecklist { .. }
+        | Operation::WarmupAppSession { .. }
+        | Operation::WarmupAppLink { .. }
+        | Operation::WarmupAutomationDraft { .. } => OperationReconciliation {
+            status: OperationReconciliationStatus::LocalOnly,
+            summary: "Warmup guidance is local-only and does not write to GitHub.".to_owned(),
+            blocks_hydrate: false,
+        },
+        _ => OperationReconciliation {
+            status: OperationReconciliationStatus::Missing,
+            summary: "Repository does not exist yet; this resource will be created after repository setup.".to_owned(),
+            blocks_hydrate: false,
+        },
+    }
+}
+
+fn operation_reconciliation_preview(
+    index: usize,
+    kind: &'static str,
+    target: String,
+    reconciliation: OperationReconciliation,
+) -> PlanOperationReconciliationPreview {
+    PlanOperationReconciliationPreview {
+        index,
+        kind,
+        target,
+        status: reconciliation_status(&reconciliation.status),
+        summary: reconciliation.summary,
+        blocks_hydrate: reconciliation.blocks_hydrate,
+    }
+}
+
+fn reconciliation_status(status: &OperationReconciliationStatus) -> &'static str {
+    match status {
+        OperationReconciliationStatus::Missing => "missing",
+        OperationReconciliationStatus::PackOwned => "packOwned",
+        OperationReconciliationStatus::AlreadyPresent => "alreadyPresent",
+        OperationReconciliationStatus::UserOwnedConflict => "userOwnedConflict",
+        OperationReconciliationStatus::LocalOnly => "localOnly",
+        OperationReconciliationStatus::Skipped => "skipped",
+    }
 }
 
 struct BuiltPackPlan {
@@ -550,6 +734,42 @@ fn repository_hydration_mode(value: &str) -> Result<RepositoryHydrationMode, Str
         "existing" => Ok(RepositoryHydrationMode::PreserveExisting),
         _ => Err("Unknown hydrate mode.".to_owned()),
     }
+}
+
+fn ensure_exact_hydrate_allowed(repo: &RepoRef) -> Result<(), String> {
+    let Some((token_source, token)) = github_api_token() else {
+        return Err("Connect GitHub before running Exact hydrate.".to_owned());
+    };
+    let full_name = format!("{}/{}", repo.owner, repo.name);
+    let Some(repository) = github_repository(&token, &full_name)? else {
+        return Ok(());
+    };
+
+    let can_admin = repository
+        .permissions
+        .as_ref()
+        .map(|permissions| permissions.admin)
+        .unwrap_or(false);
+    let token_can_delete_repo = github_token_has_scope(&token, "delete_repo")?;
+    if can_admin && token_can_delete_repo {
+        return Ok(());
+    }
+
+    let mut missing = Vec::new();
+    if !can_admin {
+        missing.push("repository admin rights");
+    }
+    if !token_can_delete_repo {
+        if token_source == "GitHub CLI" {
+            clear_github_token_cache();
+        }
+        missing.push("a GitHub token with delete_repo scope");
+    }
+
+    Err(format!(
+        "Exact hydrate is disabled for {full_name} because it needs {}.",
+        missing.join(" and ")
+    ))
 }
 
 #[tauri_plugin_auditaur::auditaur_command(skip_all, err)]
@@ -1125,7 +1345,7 @@ async fn github_auth_status() -> Result<GithubAuthStatus, String> {
 async fn search_github_repositories(
     owner: Option<String>,
     query: String,
-) -> Result<Vec<GitHubRepositorySuggestion>, String> {
+) -> Result<GitHubRepositorySearchResult, String> {
     tauri::async_runtime::spawn_blocking(move || {
         search_github_repositories_blocking(owner.as_deref(), &query)
     })
@@ -1271,7 +1491,8 @@ fn check_github_repository_packs_blocking(
             "Repository {full_name} was not found or is not accessible."
         ));
     };
-    let pack_paths = github_pack_paths(&token, &repository.full_name, &repository.default_branch)?;
+    let pack_paths = github_pack_paths(&token, &repository.full_name, &repository.default_branch)
+        .map_err(|error| error.to_string())?;
     if pack_paths.is_empty() {
         return Err(format!(
             "{} does not contain pack.yml or pack.yaml manifests.",
@@ -1353,7 +1574,7 @@ fn check_github_target_repository_blocking(
 fn search_github_repositories_blocking(
     owner: Option<&str>,
     query: &str,
-) -> Result<Vec<GitHubRepositorySuggestion>, String> {
+) -> Result<GitHubRepositorySearchResult, String> {
     let Some((_token_source, token)) = github_api_token() else {
         return Err("Connect GitHub before searching repositories.".to_owned());
     };
@@ -1392,7 +1613,8 @@ fn search_github_repositories_blocking(
         repositories.insert(0, repository);
     }
 
-    Ok(repositories
+    let mut warnings = Vec::new();
+    let repositories = repositories
         .into_iter()
         .filter(|repo| {
             normalized_query.is_empty()
@@ -1407,8 +1629,22 @@ fn search_github_repositories_blocking(
         .filter(|repo| owner.is_none_or(|owner| repo.full_name.starts_with(&format!("{owner}/"))))
         .take(20)
         .filter_map(|repo| {
-            let pack_paths =
-                github_pack_paths(&token, &repo.full_name, &repo.default_branch).ok()?;
+            let pack_paths = match github_pack_paths(&token, &repo.full_name, &repo.default_branch) {
+                Ok(pack_paths) => pack_paths,
+                Err(GithubPackDiscoveryError::Truncated { repo }) => {
+                    warnings.push(format!(
+                        "{repo} is too large for recursive pack discovery, so it was omitted from pack search results."
+                    ));
+                    return None;
+                }
+                Err(GithubPackDiscoveryError::Other(message)) => {
+                    warnings.push(format!(
+                        "{} could not be inspected for packs: {message}",
+                        repo.full_name
+                    ));
+                    return None;
+                }
+            };
             if pack_paths.is_empty() {
                 return None;
             }
@@ -1424,7 +1660,12 @@ fn search_github_repositories_blocking(
             })
         })
         .take(12)
-        .collect())
+        .collect();
+
+    Ok(GitHubRepositorySearchResult {
+        repositories,
+        warnings,
+    })
 }
 
 fn github_owner_repositories(
@@ -1618,7 +1859,29 @@ fn github_token_has_scope(token: &str, scope: &str) -> Result<bool, String> {
         .any(|token_scope| token_scope == scope))
 }
 
-fn github_pack_paths(token: &str, repo: &str, default_branch: &str) -> Result<Vec<String>, String> {
+#[derive(Debug)]
+enum GithubPackDiscoveryError {
+    Truncated { repo: String },
+    Other(String),
+}
+
+impl std::fmt::Display for GithubPackDiscoveryError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Truncated { repo } => write!(
+                formatter,
+                "{repo} is too large for recursive pack discovery. GitHub truncated the repository tree, so autorepo cannot safely tell whether packs exist yet."
+            ),
+            Self::Other(message) => formatter.write_str(message),
+        }
+    }
+}
+
+fn github_pack_paths(
+    token: &str,
+    repo: &str,
+    default_branch: &str,
+) -> Result<Vec<String>, GithubPackDiscoveryError> {
     let Some((owner, name)) = repo.split_once('/') else {
         return Ok(Vec::new());
     };
@@ -1628,14 +1891,16 @@ fn github_pack_paths(token: &str, repo: &str, default_branch: &str) -> Result<Ve
         .set("Accept", "application/vnd.github+json")
         .set("X-GitHub-Api-Version", "2022-11-28")
         .set("User-Agent", "autorepo-desktop")
-        .set("Authorization", &format!("Bearer {token}"))
+        .set("Authorization", &format!("token {token}"))
         .call()
-        .map_err(github_repo_search_error)?;
-    let tree = response
-        .into_json::<GitHubTreeResponse>()
-        .map_err(|_| "GitHub returned an unreadable repository tree.".to_owned())?;
+        .map_err(|error| GithubPackDiscoveryError::Other(github_repo_search_error(error)))?;
+    let tree = response.into_json::<GitHubTreeResponse>().map_err(|_| {
+        GithubPackDiscoveryError::Other("GitHub returned an unreadable repository tree.".to_owned())
+    })?;
     if tree.truncated {
-        return Ok(Vec::new());
+        return Err(GithubPackDiscoveryError::Truncated {
+            repo: repo.to_owned(),
+        });
     }
 
     Ok(tree
@@ -1795,7 +2060,7 @@ fn github_api_token() -> Option<(&'static str, String)> {
         return Some((token.source, token.value));
     }
 
-    let env_token = ["AUTOREPO_GITHUB_TOKEN", "GITHUB_TOKEN"]
+    let env_token = ["AUTOREPO_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"]
         .into_iter()
         .find_map(|name| {
             std::env::var(name)
@@ -1813,6 +2078,12 @@ fn github_api_token() -> Option<(&'static str, String)> {
         });
     }
     Some(token)
+}
+
+fn clear_github_token_cache() {
+    if let Ok(mut cache) = GITHUB_TOKEN_CACHE.get_or_init(|| Mutex::new(None)).lock() {
+        *cache = None;
+    }
 }
 
 fn github_cli_token() -> Option<(&'static str, String)> {
@@ -1873,6 +2144,8 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -1909,6 +2182,7 @@ pub fn run() {
             validate_pack,
             list_repo_packs,
             preview_pack_plan,
+            preview_pack_reconciliation,
             execute_pack_dry_run,
             execute_pack_hydrate
         ])

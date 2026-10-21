@@ -66,9 +66,12 @@ The desktop shell lives in `apps\desktop` and uses Tauri 2, React, and Primer Re
 npm install
 npm run dev
 npm run build
+npm run drill:desktop
 ```
 
-The first shell is intentionally read-only: it establishes Primer theming, Tauri command wiring, pack validation, release-lane visibility, and the shared observation vocabulary before write execution is exposed in the UI. The Validate pack panel loads the built-in pack or a local pack path through the `autorepo` library, returning manifest counts and validation errors from the same core logic the CLI uses. Settings currently check local GitHub CLI authentication and provide a copyable `gh auth login --hostname github.com --web --scopes repo` command; the app does not start OAuth or submit credentials for the user.
+`npm run drill:desktop` runs a repeatable Auditaur workflow smoke test: start the Tauri app, load the local `packs` collection, verify the plan preview, run the no-write dry-run, exercise pack search, and fail on frontend errors, exceptions, or failed IPC calls.
+
+The desktop shell loads local or GitHub pack collections, previews deterministic GitHub writes and local warmups, supports no-write dry-runs, and gates live hydrate execution behind explicit confirmation. Settings currently check local GitHub CLI authentication and provide a copyable `gh auth login --hostname github.com --web --scopes repo` command; the app does not start OAuth or submit credentials for the user.
 
 ## Quick start
 

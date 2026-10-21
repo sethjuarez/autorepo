@@ -9,6 +9,7 @@
   "scripts": {
     "build": "npm --workspace apps/desktop run build",
     "dev": "npm --workspace apps/desktop run dev",
+    "drill:desktop": "node .auditaur/drills/desktop-workflow.mjs",
     "test": "npm --workspace apps/desktop run test",
     "tauri": "npm --workspace apps/desktop run tauri"
   },
